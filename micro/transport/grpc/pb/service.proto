@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = ".;pb";
+
+
+service Service {
+rpc Call (CallRequest) returns (CallReply);
+}
+
+message CallRequest {
+string dns = 1;
+string params = 2;
+}
+
+message CallReply {
+int64 code = 1;
+string msg = 2;
+string data = 3;
+}
+
