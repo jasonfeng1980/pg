@@ -1,26 +1,81 @@
 # pg
-方便PHPer 快速使用GO
-无需考虑 熔断，限流，链路追踪，连接池
-同时支持 WEB请求和微服务（HTTP,HTTPS,GRPC)
-
-### 快速开始
+方便PHPer 快速使用GO  
+无需考虑 熔断，限流，链路追踪，连接池  
+同时支持 WEB请求和微服务（HTTP,HTTPS,GRPC)  
+### 推荐目录结构
+```text
+项目目录
+  - apps   # 服务文件夹
+    - demo   # 服务名称
+      - xx.go
+  - cmd    # 启动文件夹
+    - batch  # 批处理
+    - micro  # 某个微服务
+  - conf   # 配置文件夹
+    - demo   # 服务名称
+      - pg_11_dev.yaml  # 具体的服务配置YAML
+    mysql_dev.yaml  全局mysql配置YAML
+    redis_dev.yaml  全局redis配置YAML
+  - ecode  # 全局error配置
+  - log    # 日志文件夹
+  - orm    # 生成的ORM文件夹
+```
+### 快速启用服务
 ```go
 pg.SetRoot("../../")
 svc := pg.Server()
 svc.Run()
 ```
+### 调用服务API
+svc := pg.Client()  
+data, code, msg := svc.Call(dns, pg.H{})  
+dns  服务类型://服务名称/module/version/action
+```go
+func main(){
+    pg.SetRoot("../../")
+    util.CmdWait("请输入请求方式", waitFunc)
+}
 
+func waitFunc(cmdString string) (string, bool){
+    cmdString = strings.ToLower(cmdString)
+    svc := pg.Client()
+    defer svc.Close()
+    switch cmdString {
+    case "http", "grpc":
+        // dns  服务类型://服务名称/module/version/action
+        dns := cmdString + "://PG/request/v1/post"
+        data, code, msg := svc.Call(dns, pg.H{
+            "aa": 1,
+            "bb": cmdString,
+        })
+        fmt.Println(data, code, msg)
+        return "请输入请求方式", true
+    case "exit":
+        return "", false
+    default:
+        return "请输入正确的参数：http | grpc | exit", true
+    }
+}
+```
 ### 请求的API
 ```go
 api := pg.MicroApi()
 api.Register("GET","orm", "v1", "page", ORMPage)
+api.Register("GET","orm", "v1", "flow", ORMFlow)
 func ORMPage(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {
 	ret := "成功"
 	// do something .... 
 	return pg.Success(ret)
 }
 ```
-
+### 加载API项目  
+```go
+// 启动服务时
+import (
+    "github.com/jasonfeng1980/pg"
+    _ "test/apps/demo"
+)
+```
 ### 全局MYSQL配置
 ```yaml
 # 别名
@@ -87,7 +142,7 @@ ZipkinUrl:  http://localhost:9411/api/v2/spans  # zipkin地址
 
 # 限流，熔断无需配置，取默认的
 
-# MYSQL 取全局库的别名 + 权限  e.g.
+# MYSQL 取全局库的别名
 MySQL:
   - DEMO
   - TEST
@@ -96,6 +151,34 @@ MySQL:
 Redis:
   - DEMO
 ```
+### 使用YAML配置，启动服务
+```go
+package main
 
+import (
+    "fmt"
+    "github.com/jasonfeng1980/pg"
+    "os"
+    _ "test/apps/demo"
+)
+
+func main(){
+    //pg.SetConf(confDemo.ServerDev22, "../../")
+    root := "../../"
+    mysqlFile := root + "conf/mysql.yaml"
+    redisFile := root + "conf/redis.yaml"
+    serverFile := root + "conf/demo/pg_11_dev.yaml"
+
+
+    err := pg.SetConfYaml(mysqlFile, redisFile, serverFile, root)
+    if err != nil {
+        fmt.Println(err)
+        os.Exit(1)
+    }
+
+    svc := pg.Server()
+    svc.Run()
+}
+```
 
 
