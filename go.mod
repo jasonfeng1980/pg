@@ -2,7 +2,6 @@ module github.com/jasonfeng1980/pg
 
 go 1.14
 
-replace github.com/jasonfeng1980/pg => /Users/jason/Documents/golang/src/phpgoV0.7
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
 

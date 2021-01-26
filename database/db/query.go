@@ -518,23 +518,23 @@ func (q *Query) execForLineNum(query string, args ...interface{}) *Result {
     var (
         handle *sql.Stmt
         err error
+        res  sql.Result
     )
     if q.tx == nil { // SQL
         handle, err = db.Prepare(query)
     } else { // 事务
         handle, err = q.tx.Prepare(query)
     }
-    q.checkErr(err)
-    defer handle.Close()
-
-
-
-    res, err := handle.Exec(args...)
 
     useCache := false
     if q.options != nil && q.options.useCache{
         useCache = q.options.useCache
     }
+
+    if err ==nil {
+        res, err = handle.Exec(args...)
+    }
+    defer handle.Close()
 
     return &Result{
         useCache: useCache,
@@ -576,11 +576,6 @@ func (q *Query) execForArray(query string, args ...interface{}) *Result{
     //return result
 }
 
-func (q *Query)checkErr(err error){
-    if err != nil {
-        panic(err.Error())
-    }
-}
 
 /////////////////////////////////////////////////////
 //

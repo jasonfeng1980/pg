@@ -101,6 +101,7 @@ var (
     LogInit = util.LogInit
 
     Ecode = ecode.Err
+    ReadError = ecode.ReadError
 )
 
 type H map[string]interface{}

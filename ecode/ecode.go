@@ -43,6 +43,8 @@ var (
     UtilNoUploadFile = Err(1006, "没有需要上传的文件")
     UtilWrongDir = Err(1007, "错误的文件目录:%s")
 
+    CallServerPanic = Err(1120, "执行dns【%s】时，出现Panic错误: %s")
+
 
     // 浏览器请求   [1100,1200)
     HttpMissDns = Err(11, "缺少DNS")

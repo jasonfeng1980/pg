@@ -1,0 +1,28 @@
+# 别名
+DEMO:
+  RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
+  Network:  tcp         # 链接方式 tcp | unix
+  Addr:     docker.for.mac.host.internal:6379 # 服务地址，主机名:端口，默认localhost:6379
+  Password:             # 密码  就是auth的部分
+  DB:       0           # 数据库
+  MasterName:           # 哨兵模式的 MasterName
+  PoolSize: 40          # 连接池容量
+  MinIdleConns: 10      # 闲置连接数量
+  IdleTimeout: 300      # 空闲持续时间 默认300秒
+  DialTimeout: 2        # 连接超时时间 单位秒
+  ReadTimeout: 2        # 读超时时间 单位秒
+  WriteTimeout: 2       # 写超时时间 单位秒
+
+TEST:
+  RedisType: CLIENT       # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
+  Network:  tcp         # 链接方式 tcp | unix
+  Addr:     docker.for.mac.host.internal:6379 # 服务地址，主机名:端口，默认localhost:6379
+  Password:             # 密码  就是auth的部分
+  DB:       0           # 数据库
+  MasterName:           # 哨兵模式的 MasterName
+  PoolSize: 40          # 连接池容量
+  MinIdleConns: 10      # 闲置连接数量
+  IdleTimeout: 300      # 空闲持续时间 默认300秒
+  DialTimeout: 2        # 连接超时时间 单位秒
+  ReadTimeout: 2        # 读超时时间 单位秒
+  WriteTimeout: 2       # 写超时时间 单位秒

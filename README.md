@@ -110,7 +110,7 @@ TEST:
 ```
 
 ### 全局REDIS配置
-```yaml
+```yamlll
 # 别名
 DEMO:
   RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
@@ -183,12 +183,10 @@ import (
 )
 
 func main(){
-    //pg.SetConf(confDemo.ServerDev22, "../../")
     root := "../../"
     mysqlFile := root + "conf/mysql.yaml"
     redisFile := root + "conf/redis.yaml"
     serverFile := root + "conf/demo/pg_11_dev.yaml"
-
 
     err := pg.SetConfYaml(mysqlFile, redisFile, serverFile, root)
     if err != nil {
