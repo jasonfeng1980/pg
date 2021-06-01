@@ -11,7 +11,7 @@ var (
 
 // 当前时间
 func TimeNow() time.Time{
-   return time.Now().In(TimeLocation)
+    return time.Now().In(TimeLocation)
 }
 
 // 变成字符串

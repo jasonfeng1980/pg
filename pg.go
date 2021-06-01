@@ -2,75 +2,37 @@ package pg
 
 import (
     "context"
-    "fmt"
     "github.com/go-kit/kit/endpoint"
-    callConf "github.com/jasonfeng1980/pg/conf"
+    "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/database/db"
+    "github.com/jasonfeng1980/pg/database/mdb"
     "github.com/jasonfeng1980/pg/database/rdb"
     "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/micro"
     callendpoint "github.com/jasonfeng1980/pg/micro/endpoint"
     "github.com/jasonfeng1980/pg/micro/service"
+    "github.com/jasonfeng1980/pg/mq/rabbitmq"
     "github.com/jasonfeng1980/pg/util"
     "github.com/sony/gobreaker"
     "time"
 )
 
-// 从YAML配置系统
-func SetConfYaml(mysqlFile string, redisFile string, serverFile string, root string) error{
-    globalMysql, err := yamlToMysql(mysqlFile)
-    if err != nil {
-        return err
-    }
-    globalRedis, err := yamlToRedis(redisFile)
-    if err != nil {
-        return err
-    }
-
-    serverConf, err := yamlToServer(serverFile, globalMysql, globalRedis)
-    if err != nil {
-        return err
-    }
-
-    root = util.FileRealPath(root)
-    fmt.Println("系统根目录：", root)
-    serverConf.ServerRoot = root
-    callConf.Set(*serverConf)
-
-
-    util.LogInit(serverConf)
-
-    return nil
-}
-
-// 设置系统配置
-func SetConf(c callConf.Config, root string){
-    root = util.FileRealPath(root)
-    fmt.Println("系统根目录：", root)
-    c.ServerRoot = root
-    callConf.Set(c)
-    util.LogInit(&c)
-}
-func SetRoot(root string){
-    c := callConf.Get()
-    root = util.FileRealPath(root)
-    fmt.Println("系统根目录：", root)
-    c.ServerRoot = root
-    callConf.Set(c)
-}
-
 ///////// server  /////////
 // 服务
-func Server() *micro.Server {
-    return &micro.Server{
-        Conf:   callConf.Get(),
+func Server(root ...string) *micro.Server {
+    ret := &micro.Server{
+        Conf:   conf.Get(),
     }
+    if len(root) == 1 {
+        ret.Conf.ServerRoot = root[0]
+    }
+    return ret
 }
 
 ///////// client  /////////
-// 服务
+// 客户端
 func Client() *micro.Client {
-    config := callConf.Get()
+    config := conf.Get()
     c := &micro.Client{
         Conf: config,
         Ctx: context.Background(),
@@ -78,7 +40,6 @@ func Client() *micro.Client {
     c.InitTraceClient()
     c.Middleware = []endpoint.Middleware{
         callendpoint.TraceClient("TraceClient", c.Tracer),
-        callendpoint.ZipkinTrace(c.ZipkinTracer),
         callendpoint.LimitDelaying(config.LimitClient),
         callendpoint.Gobreaking(gobreaker.Settings{
             Name:    "Gobreaking-" + config.ServerName,
@@ -90,32 +51,36 @@ func Client() *micro.Client {
 
 ///////// 快捷方法  /////////
 var (
+    Ecode = ecode.Err
+    NewError   = ecode.NewError
+    Root = conf.ConfInit
+
     MicroApi = service.Api
     MySQL = db.MYSQL
+    Mongo = mdb.MONGO
+    Expr = db.Expr
     Redis = rdb.Redis
+    RabbitMQ = rabbitmq.RabbitMq
     Filter = &db.Filter{}
+    YamlRead = conf.ConfInit
+    Log = util.Log
 
-    LogInfo = util.LogHandle("info")
-    LogErr = util.LogHandle("error")
-    LogDebug = util.LogHandle("debug")
-    LogInit = util.LogInit
-
-    Ecode = ecode.Err
-    ReadError = ecode.ReadError
 )
-
-type H map[string]interface{}
-func Success(data interface{}) (interface{}, int64, string){
+type M map[string]interface{}
+func Suc(data interface{}) (interface{}, int64, string){
     return data, 200, ""
 }
-func Error(e error) (interface{}, int64, string) {
+// error => nil, code, msg  （ api 输出格式）
+func Err(e error) (interface{}, int64, string) {
     code, msg := ecode.ReadError(e)
     return nil, code, msg
 }
+// code, msg  => nil, code, msg  （ api 输出格式）
 func ErrCode(code int64, msg string)(interface{}, int64, string) {
     return nil, code, msg
 }
+// 调试输出
 func D(kvs ...interface{}){
-    LogDebug.Log(kvs...)
+    util.Log.With(kvs...).Debug()
 }
 

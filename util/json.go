@@ -1,26 +1,38 @@
 package util
 
 import (
+    "github.com/jasonfeng1980/pg/ecode"
     jsoniter "github.com/json-iterator/go"
 )
 
 var Json = jsoniter.ConfigCompatibleWithStandardLibrary
-// map => byte
+
+// map => json_byte
 func JsonEncode(data interface{}) ([]byte, error){
     return Json.Marshal(data)
 }
-func JsonDecode(data []byte, v interface{}) error{
-    return Json.Unmarshal(data, v)
+// json_byte or string => map
+func JsonDecode(data interface{}, v interface{}) error{
+    var b []byte
+    switch data.(type) {
+    case []byte:
+        b = data.([]byte)
+    case string:
+        b = []byte(data.(string))
+    default:
+        return ecode.UtilErrDecodeJson.Error()
+    }
+    return Json.Unmarshal(b, v)
 }
 
-// json => map
+// json_string => map
 func JsonDecodeToMap(jsonStr string) (jsonMap map[string]interface{}, err error) {
     jsonMap = make(map[string]interface{})
     err = Json.Unmarshal([]byte(jsonStr), &jsonMap)
     return
 }
 
-// json => []map
+// json_string => []map
 func JsonDecodeToListMap(jsonStr string) (jsonMap []map[string]interface{}, err error) {
     jsonMap = make([]map[string]interface{}, 0)
     err = Json.Unmarshal([]byte(jsonStr), &jsonMap)

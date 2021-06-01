@@ -6,13 +6,14 @@ import (
 )
 
 
-// 获取一个interface{}的类型
+// 获取interface{}的类型
 func InterfaceType(arg interface{}) string{
     return reflect.Indirect(reflect.ValueOf(arg)).Type().String()
 }
 
-// interface 变array
-func InterfaceToArr(dataArg interface{}) (ret []map[string]interface{}, err error){
+// interface => []map[string]interface
+// []interface{} | []map[string]interface{} |map[string]interface{}
+func InterfaceToListMap(dataArg interface{}) (ret []map[string]interface{}, err error){
     err = ecode.UtilWrongDataType.Error()
     switch dataArg.(type) {
     case []interface{}:

@@ -13,7 +13,7 @@ type Middleware func(Service) Service
 
 // 日志记录
 func LoggingMiddleware() Middleware {
-    logger := util.LogHandle("info")
+    logger := util.Log
     return func(next Service) Service {
         return &loggingMiddleware{logger, next}
     }

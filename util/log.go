@@ -1,174 +1,153 @@
 package util
 
 import (
-    "fmt"
-    "github.com/go-kit/kit/log"
-    "github.com/jasonfeng1980/pg/conf"
-    "github.com/jasonfeng1980/pg/ecode"
-    "os"
-    "strings"
+    "github.com/lestrrat-go/file-rotatelogs"
+    "github.com/rifflock/lfshook"
+    "github.com/sirupsen/logrus"
     "sync"
-    "time"
 )
 
-const DEFAULT_LOG_OS_STDOUT = "DEFAULT_LOG_OS_STDOUT"
 var (
-    logDir = ""
-    logShowDebug = false
-    serverName = ""
-    defaultLog = log.NewLogfmtLogger(os.Stdout)
-    logMask = logGetMask()
-    TimesLayout = log.TimestampFormat(
-        func() time.Time { return time.Now() },
-        "2006-01-02 15:04:05",
-    )
-    logPools = &logPoll{
-        pool: make(map[string]Logger),
+    Log     = &log{
+        Dir:"",
+        Debug: true,
+        Logger: &Logger{
+            "",
+            logrus.New(),
+        },
     }
+    logPool = &logPools{}
 )
-func init(){
-    defaultLog = log.With(defaultLog, "ts", TimesLayout)
-    //defaultLog = log.With(defaultLog, "caller", log.Caller(4))
-    logPools.pool[DEFAULT_LOG_OS_STDOUT] = Logger{
-       name: DEFAULT_LOG_OS_STDOUT,
-       Logger: defaultLog,
+
+func LogInt(dir string, showDebug bool, serverName string) {
+    Log = &log{
+        Dir: dir,
+        Debug: showDebug,
     }
-    logPools.osFile = append(logPools.osFile, os.Stdout)
-}
-
-
-func LogInit(conf *conf.Config) {
-    logDir = conf.LogDir
-    if logDir!="" &&  logDir[:1] != "/" {
-        logDir = conf.ServerRoot + "/" + logDir
+    logDefault := Log.Get(serverName)
+    Log = &log{
+        Dir: "",
+        Debug: true,
+        Logger: logDefault,
     }
-    logShowDebug = conf.LogShowDebug
-    serverName = conf.ServerName + conf.ServerNo
-    logPools = &logPoll{
-        pool: make(map[string]Logger),
+}
+
+type log struct {
+    Dir     string
+    Debug   bool
+    *Logger
+}
+// 创建新的日志文件
+func (l *log)New(name string) (*Logger, error){
+    newLog := &Logger{
+        name,
+        logrus.New(),
     }
 
+
+    // 测试模式 显示行号
+    newLog.ReportCaller = l.Debug
+    // 非测试模式， 显示error及以上的错误
+    if l.Debug {
+        newLog.Level = logrus.InfoLevel
+    } else {
+        newLog.Level = logrus.TraceLevel
+    }
+    logFormat := &logrus.JSONFormatter{
+        PrettyPrint:     l.Debug,                 //格式化
+        TimestampFormat: "06-01-02 15:04:05", // 时间格式
+    }
+    if l.Dir != ""  {
+        newLog.Out = &nullWrite{}
+        newLog.AddHook(l.newLfsHook(name, logFormat))
+    } else {
+        newLog.Formatter = logFormat
+    }
+    return newLog, nil
+}
+func (l *log)Get(name string) *Logger{
+    return logPool.Get(name)
 }
 
-// 不做任何事的LOG
-func LogNothing()log.Logger{
-    return log.NewNopLogger()
+type nullWrite struct {}
+func (nu *nullWrite)Write(p []byte) (n int, err error){
+    return 0, nil
 }
-// 获取指定名称的日志句柄
-func LogHandle(name string) Logger{
-    return logPools.Get(name)
+
+// 日志钩子(日志拦截，并重定向)
+func (l *log)newLfsHook(name string, logFormat logrus.Formatter) logrus.Hook {
+    writerAccess := l.logWriter(name,"access")
+    writerDebug := l.logWriter(name,"debug")
+    writerError := l.logWriter(name,"error")
+
+    // 可设置按不同level创建不同的文件名
+    lfsHook := lfshook.NewHook(lfshook.WriterMap{
+        logrus.InfoLevel:  writerAccess,
+        logrus.TraceLevel: writerDebug,
+        logrus.DebugLevel: writerDebug,
+        logrus.WarnLevel:  writerError,
+        logrus.ErrorLevel: writerError,
+        logrus.FatalLevel: writerError,
+        logrus.PanicLevel: writerError,
+    }, logFormat)
+
+    return lfsHook
 }
-// 关闭所有的日志链接
-func LogClose(){
-    logPools.Close()
+func (l *log)logWriter(name, env string) *rotatelogs.RotateLogs {
+    writer, err := rotatelogs.New(
+        // 日志文件
+        l.Dir + "/" + name + "." + env  + ".%Y%m%d",
+
+        // 日志周期(默认每86400秒/一天旋转一次)
+        rotatelogs.WithRotationTime(86400),
+
+        // 清除历史 (WithMaxAge和WithRotationCount只能选其一)
+        //rotatelogs.WithMaxAge(time.Hour*24*7), //默认每7天清除下日志文件
+        rotatelogs.WithRotationCount(30), //只保留最近的N个日志文件
+    )
+    if err != nil {
+        panic(err)
+    }
+    return writer
 }
 
 
 type Logger struct {
     name string
-    log.Logger
+    *logrus.Logger
 }
-
 func (l Logger)Log(kvs ...interface{}) error{
-    if logDir != "" { // 如果指定了存储文件
-        if l.name == "DEBUG" && !logShowDebug { // 判断是否允许显示DEBUG日志
-            return nil
-        }
-        newMask := logGetMask() // 获取当前的日期mask
-        if newMask != logMask { // 如果mask不一致，就重新指向文件
-            logPools.Reload(newMask)
-            l.Logger = logPools.Get(l.name)
-        }
-    }
-    return l.Logger.Log(kvs...)
-}
-func (l Logger)Logf(format string, args ...interface{}) error{
-    newArg := fmt.Sprintf(format, args...)
-    return l.Log("msg", newArg)
+    l.With(kvs...).Info()
+    return nil
 }
 
-type logPoll struct {
+func (l *Logger)With(kvs ...interface{}) *logrus.Entry {
+    var ret = &logrus.Entry{
+        Logger: l.Logger,
+    }
+    len := len(kvs)
+    for i:=1; i<len; i=i+2 {
+        ret = ret.WithField(StrParse(kvs[i-1]), kvs[i])
+    }
+    return ret
+}
+
+type logPools struct {
     rwLock sync.RWMutex
-    pool   map[string]Logger
-    osFile  []*os.File
-}
-// 重新指向加载文件目录
-func (p *logPoll) Reload(mask string) {
-    logMask = mask // 重新指定mask
-    if logDir == "" { // 没有指定存储文件，就不处理
-        return
-    }
-    var logOsFile []*os.File
-    // 循环pool，替换写入文件
-    for n, _ := range p.pool {
-        if n == DEFAULT_LOG_OS_STDOUT {
-            continue
-        }
-        w := p.newLog(n)
-        logOsFile = append(logOsFile, w)
-    }
-    // 关闭之前的文件句柄
-    p.Close()
-
-    // 创建新的文件关闭
-    p.osFile = logOsFile
-}
-func (p *logPoll) Close(){
-    for _, v := range p.osFile{
-        v.Close()
-    }
-}
-func (p *logPoll) Get(name string) Logger{
-    name = strings.ToUpper(name)
-    // 判断POOL里是否有
-    p.rwLock.RLock()
-    _, ok := p.pool[name]
-    p.rwLock.RUnlock()
-    if  !ok { // 没有就创建一个新的
-        // 创建新的POOL
-        w := p.newLog(name)
-        if w != nil {
-            p.osFile = append(p.osFile, w)
-        }
-    }
-
-    return p.pool[name]
+    Pools map[string]*Logger
 }
 
-func (p *logPoll)newLog(name string) *os.File{
-    var (
-        logger log.Logger
-        w *os.File
-        err error
-    )
-    name = strings.ToUpper(name)
-
+func (p *logPools)Add(l *Logger){
     p.rwLock.Lock()
-    if logDir == "" || name == DEFAULT_LOG_OS_STDOUT { // 没有指定日志文件或者是OS_STDOUT
-        logger = defaultLog
-        w = nil
-    } else {
-        if !FilePathExists(logDir){ // 路径不正确
-            panic(ecode.UtilWrongDir.Error(logDir))
-        }
-        file := fmt.Sprintf("%s/%s.%s.%s", logDir, serverName, name, logMask)
-        w, err = os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModeAppend|0666)
-        if err != nil { // 无法创建日志文件
-            panic(err)
-        }
-        logger = log.NewJSONLogger(w)
-        logger = log.With(logger, "ts", TimesLayout)
-        logger = log.With(logger, "caller", log.Caller(4))
-    }
-
-    p.pool[name] = Logger{
-        name: name,
-        Logger: logger,
-    }
+    p.Pools[l.name] = l
     p.rwLock.Unlock()
-    return w
 }
-
-func logGetMask() string{
-    return time.Now().Format("060102")
+func (p *logPools)Get(name string) (ret *Logger) {
+    var ok bool
+    p.rwLock.RLock()
+    if ret, ok = p.Pools[name]; !ok{
+        ret, _ = Log.New(name)
+    }
+    p.rwLock.RUnlock()
+    return
 }

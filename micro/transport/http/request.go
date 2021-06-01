@@ -4,8 +4,8 @@ import (
     "fmt"
     "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/ecode"
-    "github.com/jasonfeng1980/pg/util"
     "github.com/jasonfeng1980/pg/micro/service"
+    "github.com/jasonfeng1980/pg/util"
     "mime/multipart"
     "net/http"
 )
@@ -23,9 +23,10 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
         util.Json.NewDecoder(r.Body).Decode(&jsonRequest)
         if v, ok:=jsonRequest["Dns"]; ok {// 传参
             dns = v.(string)
-            params, ok = jsonRequest["Params"].(map[string]interface{})
-            if !ok{
-                err = ecode.HttpDataNotMap.Error()
+            if jsonRequest["Params"] != nil {
+                if params, ok = jsonRequest["Params"].(map[string]interface{}); !ok{
+                    err = ecode.HttpDataNotMap.Error()
+                }
             }
         }
     } else {
@@ -44,7 +45,7 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
             r.ParseForm()
             post = httpDecodeArgs(r.PostForm)
         }
-        params = util.MapMergeForNew(jsonRequest, post, get)
+        params = util.MapMerge(jsonRequest, post, get)
         if files != nil { // 文件上传
             params[service.UploadFile] = files
         }

@@ -47,7 +47,15 @@ func FileRead(filename string) ([]byte, error){
     data, err := ioutil.ReadFile(filename)
     return data, err
 }
-
+// 获取文件所在的文件夹的绝对路径
+func FileDir(filename string) string{
+    return filepath.Dir(FileRealPath(filename))
+}
+func FileDirCreate(filename string) (string, error){
+    dir := filepath.Dir(FileRealPath(filename))
+    err := FileMakeDir(dir)
+    return dir, err
+}
 // 写文件，没有文件夹就自动创建
 func FileWrite(dir string, filename string, data string) error{
     //syscall.Umask(0000)
@@ -56,7 +64,7 @@ func FileWrite(dir string, filename string, data string) error{
     }
     return ioutil.WriteFile(dir + "/" + filename, []byte(data), 0755)
 }
-
+// 获取文件绝对路径
 func FileRealPath(path string) string{
     if path == "" {
         path = "."

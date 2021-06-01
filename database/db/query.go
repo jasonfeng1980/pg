@@ -115,8 +115,38 @@ func (q *Query)RightJoin(table string, on string) *Query{
     return q
 }
 
+func (q *Query)buildWhereSql(where interface{}) (str string) {
+    switch where.(type) {
+    case string:
+        str = where.(string)
+    case map[string]interface{}:
+
+    default:
+        panic(ecode.DbWrongWhere.Error())
+    }
+    return
+}
+
 // where条件
-func (q *Query)Where(whereSql string, args  ...interface{}) *Query{
+func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
+    var whereSql string
+    switch where.(type) {
+    case string:
+        whereSql = where.(string)
+    case map[string]interface{}:
+        for k, v := range where.(map[string]interface{}) {
+            if whereSql == "" {
+                whereSql = fmt.Sprintf("%s=? ", k)
+            } else {
+                whereSql = fmt.Sprintf("%s and %s=? ", whereSql, k)
+            }
+            args = append(args, v)
+        }
+    default:
+        mList := q.toList(where)
+        return q.Where(mList[0])
+        //panic(ecode.DbWrongWhere.Error())
+    }
     if strings.Index(strings.ToLower(whereSql), " or ") > -1 { // 包含or
         whereSql =  "( " + whereSql + " )"
     }
@@ -154,83 +184,42 @@ func (q *Query)Limit(skip int, limit int) *Query{
     return q
 }
 
-/* // struct 无法知道是否赋值，不开放
 func (q *Query)Insert(data interface{}) *Query{
- var insertData []map[string]interface{}
- if dataMap, ok := data.(map[string]interface{}); ok{
-   insertData = append(insertData, dataMap)
- } else if dataArr, ok := data.([]map[string]interface{}); ok{
-   insertData = dataArr
- } else { // 处理 struct  []struct
-   t := reflect.ValueOf(data)
-   for t.Kind() == reflect.Ptr { // 指针
-     t = t.Elem()
-   }
-   switch t.Kind() {
-   case reflect.Struct:
-     insertData = append(insertData, q.structToMap(t))
-   case reflect.Slice:
-     len := t.Len()
-     for i:=0; i<len; i++ {
-       td := t.Index(i)
-       for td.Kind() == reflect.Ptr { // 指针
-         td = td.Elem()
-       }
-       if td.Kind() == reflect.Struct {
-         insertData = append(insertData, q.structToMap(td))
-       }
-     }
-
-   default:
-     panic("data 参数格式错误")
-   }
- }
- q.Clear()
- q.options.insert = insertData
- return q
-}
-
-*/
-
-// 插入数据
-func (q *Query)Insert(data interface{}) *Query{
-    var insertData []map[string]interface{}
-    if dataMap, ok := data.(map[string]interface{}); ok{
-        insertData = append(insertData, dataMap)
-    } else if dataArr, ok := data.([]map[string]interface{}); ok{
-        insertData = dataArr
-    } else {
-        panic("插入数据格式不对")
-    }
     q.Clear()
-    q.options.insert = insertData
+    q.options.insert = q.toList(data)
     return q
 }
 
-func (q *Query)structToMap(value reflect.Value) map[string]interface{} {
-    m := make(map[string]interface{})
-    t := value.Type()
-    for i:=0; i<value.NumField(); i++ {
-        //vf := value.Field(i)
-        tf := t.Field(i)
-        //忽略非导出字段
-        if tf.Anonymous {
-            continue
+func (q *Query)toList(h interface{}) (insertData []map[string]interface{}){
+    t := reflect.ValueOf(h)
+    switch t.Kind() {
+    case reflect.Map:
+        insertData = append(insertData, q.toMap(t))
+    case reflect.Slice:
+        len := t.Len()
+        for i:=0; i<len; i++ {
+            td := t.Index(i)
+            for td.Kind() == reflect.Ptr { // 指针
+                td = td.Elem()
+            }
+            if td.Kind() == reflect.Map {
+                insertData = append(insertData, q.toMap(td))
+            } else {
+                panic("数据格式不对")
+            }
         }
-        ////忽略无效、零值字段
-        //if reflect.DeepEqual(vf.Interface(), reflect.Zero(vf.Type()).Interface()) {
-        //  continue
-        //}
-
-        field := value.Type().Field(i)
-        name := field.Name
-        tag := field.Tag.Get("json")
-        if  tag!= "" {
-            name = tag
-        }
-        m[name] = value.Field(i).Interface()
+    default:
+        panic("数据格式不对")
     }
-    return m
+    return
+}
+
+func (q *Query)toMap(t reflect.Value) map[string]interface{}{
+    ret := make(map[string]interface{})
+    for _,k := range t.MapKeys(){
+        ret[k.String()] = t.MapIndex(k).Interface()
+    }
+    return ret
 }
 
 func (q *Query)buildInsertSql() (sql string, args []interface{}){
@@ -363,8 +352,8 @@ func (q *Query)Query(args ...interface{}) *Result{
         if cacheGet {
             driver = "REDIS缓存"
         }
-        util.LogHandle("debug").Log("driver", driver, "query", query, "args", fmt.Sprint(args),
-            "useTime", time.Since(t) )
+        util.Log.Logger.With("driver", driver, "query", query, "args", fmt.Sprint(args),
+            "useTime", time.Since(t) ).Debug()
     }()
 
     if argLen == 1{
@@ -622,6 +611,7 @@ func (r *Result) Array() ([]map[string]interface{}, error){
     return result, err
 }
 
+
 // 获取查询数据 - 生成object
 func (r *Result) Bind(dest interface{}) error{
     // 判断缓存 如果有直接返回
@@ -758,37 +748,6 @@ func (r *Result)address(dest reflect.Value, columns []string) []interface{} {
     addrList := make([]interface{}, 0)
     switch dest.Elem().Type().Kind() {
     case reflect.Struct:
-        //for n, l := 0, t.NumField(); n < l; n++ {
-        //  tf := t.Field(n)
-        //  vf := dest.Field(n)
-        //
-        //  if tf.Anonymous {  // 嵌入字段
-        //    continue
-        //  }
-        //  for vf.Type().Kind() == reflect.Ptr { // 如果是指针
-        //    vf = vf.Elem()
-        //  }
-        //
-        //  //如果字段值是time类型之外的struct，递归取址
-        //  if vf.Kind() == reflect.Struct && tf.Type.Name() != "Time" {
-        //    nVf := reflect.New(vf.Type())
-        //    vf.Set(nVf.Elem())
-        //    addrList = append(addrList, r.address(nVf, columns)...)
-        //    continue
-        //  }
-        //
-        //  column := strings.Split(tf.Tag.Get("json"), ",")[0]
-        //  if column == "" {
-        //    continue
-        //  }
-        //  //只取选定的字段的地址
-        //  for _, col := range columns {
-        //    if col == column {
-        //      addrList = append(addrList, vf.Addr().Interface())
-        //      break
-        //    }
-        //  }
-        //}
         structFieldMap := r.getStructFieldMap(dest, columns)
         for _, col := range columns {
             if n, ok := structFieldMap[col]; ok {

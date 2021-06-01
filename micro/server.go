@@ -5,8 +5,11 @@ import (
     "fmt"
     "github.com/go-kit/kit/sd/etcdv3"
     "github.com/jasonfeng1980/pg/database/db"
+    "github.com/jasonfeng1980/pg/database/mdb"
     "github.com/jasonfeng1980/pg/database/rdb"
+    "github.com/jasonfeng1980/pg/mq/rabbitmq"
     "github.com/jasonfeng1980/pg/util"
+    zipkinot "github.com/openzipkin-contrib/zipkin-go-opentracing"
     "github.com/openzipkin/zipkin-go/reporter"
     "github.com/sony/gobreaker"
     "golang.org/x/time/rate"
@@ -18,17 +21,16 @@ import (
     "syscall"
     "time"
 
+    "github.com/go-kit/kit/endpoint"
+    "github.com/go-kit/kit/log"
+    "github.com/go-kit/kit/metrics/prometheus"
+    kitgrpc "github.com/go-kit/kit/transport/grpc"
     "github.com/oklog/oklog/pkg/group"
     stdopentracing "github.com/opentracing/opentracing-go"
     zipkin "github.com/openzipkin/zipkin-go"
     zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
     stdprometheus "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
-
-    "github.com/go-kit/kit/endpoint"
-    "github.com/go-kit/kit/log"
-    "github.com/go-kit/kit/metrics/prometheus"
-    kitgrpc "github.com/go-kit/kit/transport/grpc"
 
     callConf "github.com/jasonfeng1980/pg/conf"
     callendpoint "github.com/jasonfeng1980/pg/micro/endpoint"
@@ -38,43 +40,96 @@ import (
     callHttp "github.com/jasonfeng1980/pg/micro/transport/http"
 )
 
+type CloseFunc func()
+
 type Server struct {
     Conf callConf.Config
+    ctx  context.Context
+    closePool []CloseFunc
 }
 
-var ctx = context.Background()
+// 添加defer 关闭
+func (s *Server) AddCloseFunc(f CloseFunc) {
+    s.closePool = append(s.closePool, f)
+}
+func (s *Server) Close() {
+    for _, f :=range s.closePool{
+        f()
+    }
+}
 
-func (s *Server) Run() {
-    logger := util.LogHandle("info")
-    defer util.LogClose()
-
+func (s *Server) connDB(){
+    s.ctx = context.Background()
     // 链接MYSQL连接池
     db.MYSQL.Conn(s.Conf.MySQLConf)
-    defer db.MYSQL.Close()
-
+    s.AddCloseFunc(db.MYSQL.Close)
+    // 链接MYSQL连接池
+    mdb.MONGO.Conn(s.Conf.MongoConf)
+    s.AddCloseFunc(mdb.MONGO.Close)
     // 连接redis连接池
     rdb.Redis.Conn(s.Conf.RedisConf)
-    defer rdb.Redis.Close()
+    s.AddCloseFunc(rdb.Redis.Close)
     // 设置MYSQL缓存redis  - 缓存10秒
-    db.MYSQL.SetCacheRedis(rdb.Redis.Client("demo"), time.Second * 10)
+    if s.Conf.CacheRedis != "" {
+        db.MYSQL.SetCacheRedis(rdb.Redis.Client(s.Conf.CacheRedis), time.Second * time.Duration(s.Conf.CacheSec))
+    }
+    // 链接rabbitmq
+    rabbitmq.RabbitMq.Conn(s.Conf.RabbitMQConf)
+    s.AddCloseFunc(rabbitmq.RabbitMq.Close)
+}
 
+type ScriptFunc func() error
+func (s *Server) Script(f ScriptFunc){
+    defer s.Close()
+
+    // 链接数据库和MQ
+    s.connDB()
+
+
+    var g group.Group
+    // 优雅退出
+    initShutdown(&g)
+    // 开始执行脚本方法
+    initScriptFunc(&g, f)
+
+    util.Log.Info("exit", g.Run())
+
+}
+func initScriptFunc(g *group.Group, f ScriptFunc) {
+    g.Add(func() error {
+        return f()
+    }, func(err error) {
+        if err != nil {
+            util.Log.Error(err.Error())
+        }
+    })
+}
+
+func (s *Server) Run() {
+    defer s.Close()
+
+    logger := util.Log
+    // 链接数据库和MQ
+    s.connDB()
 
     // 链路跟踪
-    zipkinTracer, tracer, reporter := initTraceServer(s.Conf)
-    defer reporter.Close()
+    tracer, reporter := initTraceServer(s.Conf)
+    if reporter != nil {
+        defer reporter.Close()
+    }
     // 监控统计
     calls, duration := initMetrics(s.Conf)
     var (
         // 中间件
-        mdw = getMiddleware(s.Conf.LimitServer, s.Conf.BreakerServer, zipkinTracer, tracer, duration)
+        mdw = getMiddleware(s.Conf.LimitServer, s.Conf.BreakerServer, tracer, duration)
         // 服务
         service = callservice.New([]callservice.Middleware{
             callservice.LoggingMiddleware(),
             callservice.InstrumentingMiddleware(calls),
         })
         endpoints = callendpoint.New(service).AddMiddleware(mdw)
-        httpServer = callHttp.NewServer(endpoints, s.Conf, callHttp.DefaultServerOptions(tracer, zipkinTracer))
-        grpcServer  = callGrpc.NewServer(endpoints, callGrpc.DefaultServerOptions(tracer, zipkinTracer))
+        httpServer = callHttp.NewServer(endpoints, s.Conf, callHttp.DefaultServerOptions(tracer))
+        grpcServer  = callGrpc.NewServer(endpoints, callGrpc.DefaultServerOptions(tracer))
     )
 
     var g group.Group
@@ -88,15 +143,15 @@ func (s *Server) Run() {
     initShutdown(&g)
 
     // 服务发现-etcd
-    initEtcdServer(ctx, s.Conf)
+    initEtcdServer(s.ctx, s.Conf)
 
-    util.LogHandle("info").Log("exit", g.Run())
+    util.Log.Info("exit", g.Run())
 }
 // 链路跟踪
-func initTraceServer(conf callConf.Config) (*zipkin.Tracer, stdopentracing.Tracer, reporter.Reporter){
+func initTraceServer(conf callConf.Config) (stdopentracing.Tracer, reporter.Reporter){
     tracer := stdopentracing.GlobalTracer()
     if conf.ZipkinUrl == "" {
-        return nil, tracer, nil
+        return tracer, nil
     }
     //创建zipkin上报管理器
     reporter    := zipkinhttp.NewReporter(conf.ZipkinUrl)
@@ -105,11 +160,11 @@ func initTraceServer(conf callConf.Config) (*zipkin.Tracer, stdopentracing.Trace
     zEP, _ := zipkin.NewEndpoint(conf.ServerName + ":" + conf.ServerNo, "")
     zipkinTracer, err := zipkin.NewTracer(reporter, zipkin.WithLocalEndpoint(zEP))
     if err != nil {
-        util.LogHandle("error").Log("err", err, "k", "vvvv")
-        os.Exit(1)
+        util.Log.Error(err)
+        panic(err)
     }
-    tracer = stdopentracing.GlobalTracer()
-    return zipkinTracer, tracer, reporter
+    tracer = zipkinot.Wrap(zipkinTracer)
+    return tracer, reporter
 }
 // 监控统计
 func initMetrics(conf callConf.Config) (*prometheus.Counter, *prometheus.Summary) {
@@ -123,25 +178,25 @@ func initMetrics(conf callConf.Config) (*prometheus.Counter, *prometheus.Summary
         Namespace: conf.ServerName,
         Subsystem: "call",
         Name:      "request",
-        Help:      "Request duration in seconds.",
+        Help:      "请求持续时间（秒）",
     }, []string{"method", "success"})
     http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
+    // 开启DebugAddr 才可以访问这个地址
     return calls, duration
 }
 // 获取中间件
-func getMiddleware(limit *rate.Limiter, breakerSetting gobreaker.Settings, zipkinTracer *zipkin.Tracer, tracer stdopentracing.Tracer, duration *prometheus.Summary) []endpoint.Middleware{
+func getMiddleware(limit *rate.Limiter, breakerSetting gobreaker.Settings, tracer stdopentracing.Tracer, duration *prometheus.Summary) []endpoint.Middleware{
     return []endpoint.Middleware{
         callendpoint.LimitErroring(limit),
         callendpoint.Gobreaking(breakerSetting),
         callendpoint.TraceServer(tracer),
-        callendpoint.ZipkinTrace(zipkinTracer),
         callendpoint.LoggingMiddleware(),
         callendpoint.InstrumentingMiddleware(duration.With("method", "Call")),
     }
 }
 // 初始化etcd
 func initEtcdServer(ctx context.Context, conf callConf.Config) {
-    logger := util.LogHandle("etcd")
+    logger := util.Log
     if conf.HttpAddr != "" {
         k := fmt.Sprintf("/%s/%s/%s", conf.ServerName, "http", conf.ServerNo)
         regEtcdHttpServer(ctx, conf, logger, k, conf.HttpAddr)
@@ -171,7 +226,7 @@ func regEtcdHttpServer(ctx context.Context, conf callConf.Config, logger log.Log
 
 // 测试服务
 func initDebugServer(g *group.Group, conf callConf.Config) {
-    logger := util.LogHandle("debug")
+    logger := util.Log
     if conf.DebugAddr == "" {
         return
     }
@@ -195,7 +250,7 @@ func initHttpServer(g *group.Group, conf callConf.Config, httpServer http.Server
             httpServer.Addr = conf.HttpAddr
             return httpServer.ListenAndServe()
         }, func(error) {
-            httpServer.Shutdown(ctx)
+            httpServer.Shutdown(context.Background())
         })
     }
     if len(conf.HttpsInfo) == 3 && conf.HttpsInfo[0]!=""{
@@ -211,7 +266,7 @@ func initHttpServer(g *group.Group, conf callConf.Config, httpServer http.Server
 
             return httpServer.ListenAndServeTLS(conf.HttpsInfo[1],conf.HttpsInfo[2])
         }, func(error) {
-            httpServer.Shutdown(ctx)
+            httpServer.Shutdown(context.Background())
         })
     }
 

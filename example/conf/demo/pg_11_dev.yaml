@@ -1,0 +1,40 @@
+ServerName: PG          # 服务名称
+ServerNo:   11          # 服务序号
+
+# 日志配置
+LogDir:      log        # 日志文件夹 info.年月日.log | error.201012.log
+LogShowDebug: true      # 是否记录测试日志
+
+# 网站配置
+WebMaxBodySizeM:     32 # 最大允许上传的大小，单位M
+WebReadTimeout:     10  # 读取超时时间
+WebWriteTimeout:    30  # 写入超时时间
+
+# 微服务配置
+DebugAddr:  :8180       # 测试服务地址
+HttpAddr:   :80         # HTTP服务地址
+HttpsInfo:              # https 和相应证书
+  - :443
+  - example/ssl/local.com.crt
+  - example/ssl/local.com.key
+GrpcAddr:   :8182       # grpc服务地址
+
+# etcd 服务发现
+EtcdAddr:   127.0.0.1:2379   # etcd地址
+EtcdTimeout: 3          # 超时时间 单位秒
+EtcdKeepAlive: 3        # 保持时间 单位秒
+EtcdRetryTimes: 3       # 重试次数
+EtcdRetryTimeout: 30    # 重试超时时间 单位秒
+
+# 链路跟踪配置
+ZipkinUrl:  http://localhost:9411/api/v2/spans  # zipkin地址
+
+# 限流，熔断无需配置，取默认的
+
+# MYSQL 取全局库的别名 + 权限  e.g.
+MySQL:
+  - DEMO
+
+# REDIS 取全局库的别名
+Redis:
+  - DEMO

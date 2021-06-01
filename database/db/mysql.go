@@ -13,12 +13,12 @@ import (
 
 
 var MYSQL = &mySQL{
-    log: util.LogHandle(""),
+    log: util.Log.Logger,
 }
 
 type mySQL struct {
     pool map[string]*Conn  // 连接池
-    log  util.Logger
+    log  *util.Logger
     openConn map[string]*sql.DB // 已经打开的MYSQL链接
     CacheRedisClient *redis.Client // 缓存redis
     CacheExpr time.Duration // 缓存时间
@@ -28,7 +28,7 @@ type expr struct {
     S string
 }
 // update时 不需要转义的 字符串
-func (m *mySQL)Expr(s string) expr{
+func Expr(s string) expr{
     return expr{
         S: s,
     }
@@ -77,7 +77,6 @@ func (m *mySQL)InitPool(dbConf map[string]conf.MysqlConfigs){
     m.openConn = make(map[string]*sql.DB)
     // 循环配置，建立连接池
     for name, conf := range dbConf {
-        fmt.Println("pool:", name)
         m.pool[name] = &Conn{
             Conf:   &conf,
             Writer: m.conn(conf.W),
@@ -106,7 +105,7 @@ func (m *mySQL)Get(name string)(*Query, bool){
 // 关闭读写的链接
 func (m *mySQL)Close(){
     for k, v := range m.openConn {
-        m.log.Logf("关闭mysql - %s 的链接", k)
+        m.log.Infof("关闭mysql - %s 的链接", k)
         v.Close()
     }
 }
@@ -132,6 +131,6 @@ func (m *mySQL)conn(conf conf.MysqlConf) (db *sql.DB) {
     db.SetConnMaxLifetime(conf.ConnMaxLifetime)
     // 缓存链接
     m.openConn[dbDSN] = db
-    m.log.Logf("连接MYSQL   (%s : %d )/%s ----  成功", conf.Host, conf.Port, conf.Database)
+    m.log.Infof("连接MYSQL   (%s : %d )/%s ----  成功", conf.Host, conf.Port, conf.Database)
     return
 }

@@ -7,8 +7,6 @@ import (
     "github.com/jasonfeng1980/pg/util"
     stdopentracing "github.com/opentracing/opentracing-go"
     otext "github.com/opentracing/opentracing-go/ext"
-    stdzipkin "github.com/openzipkin/zipkin-go"
-    "github.com/openzipkin/zipkin-go/model"
     "time"
 
     "github.com/go-kit/kit/circuitbreaker"
@@ -45,7 +43,7 @@ func LoggingMiddleware() endpoint.Middleware {
 
             defer func(begin time.Time) {
                 if err != nil {
-                    util.LogHandle("error").Log("transport_error", err, "took", time.Since(begin))
+                    util.Log.With("transport_error", err, "took", time.Since(begin)).Error()
                 }
             }(time.Now())
             return next(ctx, request)
@@ -70,45 +68,45 @@ func TraceServer(otTracer stdopentracing.Tracer) endpoint.Middleware {
     return func(next endpoint.Endpoint) endpoint.Endpoint {
         return func(ctx context.Context, request interface{}) (interface{}, error) {
             name := request.(CallRequest).Dns
-            serverSpan := stdopentracing.SpanFromContext(ctx)
-            if serverSpan == nil {
-                // All we can do is create a new root span.
-                serverSpan = otTracer.StartSpan(name)
+            var serverSpan stdopentracing.Span
+            if parentSpan := stdopentracing.SpanFromContext(ctx); parentSpan != nil {
+                serverSpan = otTracer.StartSpan(
+                    name,
+                    stdopentracing.ChildOf(parentSpan.Context()),
+                )
             } else {
-                serverSpan.SetOperationName(name)
+                serverSpan = otTracer.StartSpan(name)
             }
+
             defer serverSpan.Finish()
             otext.SpanKindRPCServer.Set(serverSpan)
             ctx = stdopentracing.ContextWithSpan(ctx, serverSpan)
             return next(ctx, request)
         }
     }
-    //return opentracing.TraceServer(otTracer, "call")
-}
-// zipkinTracer
-func ZipkinTrace(zipkinTracer *stdzipkin.Tracer) endpoint.Middleware {
-    if zipkinTracer == nil {
-        return nil
-    }
-    return func(next endpoint.Endpoint) endpoint.Endpoint {
-        return func(ctx context.Context, request interface{}) (interface{}, error) {
-            var sc model.SpanContext
-            if parentSpan := stdzipkin.SpanFromContext(ctx); parentSpan != nil {
-                sc = parentSpan.Context()
-            }
-            name := request.(CallRequest).Dns
-            sp := zipkinTracer.StartSpan(name, stdzipkin.Parent(sc))
-            defer sp.Finish()
-
-            ctx = stdzipkin.NewContext(ctx, sp)
-            return next(ctx, request)
-        }
-    }
-    //return zipkin.TraceEndpoint(zipkinTracer, name)
+    return opentracing.TraceServer(otTracer, "call")
 }
 
 // trace client
 func TraceClient(name string, otTracer stdopentracing.Tracer) endpoint.Middleware {
-    return opentracing.TraceClient(otTracer, name)
+    return func(next endpoint.Endpoint) endpoint.Endpoint {
+        return func(ctx context.Context, request interface{}) (interface{}, error) {
+            var clientSpan stdopentracing.Span
+            name := ">> " + request.(CallRequest).Dns
+            if parentSpan := stdopentracing.SpanFromContext(ctx); parentSpan != nil {
+                clientSpan = otTracer.StartSpan(
+                    name,
+                    stdopentracing.ChildOf(parentSpan.Context()),
+                )
+            } else {
+                clientSpan = otTracer.StartSpan(name)
+            }
+            defer clientSpan.Finish()
+            otext.SpanKindRPCClient.Set(clientSpan)
+            ctx = stdopentracing.ContextWithSpan(ctx, clientSpan)
+            return next(ctx, request)
+        }
+    }
+    //return opentracing.TraceClient(otTracer, name)
 }
 

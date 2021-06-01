@@ -2,25 +2,9 @@ package util
 
 import (
     "github.com/jasonfeng1980/pg/ecode"
-    "strconv"
+
+	"strconv"
 )
-
-
-func IntHideErr(errList []error, arg interface{}) int{
-    i, e := IntParse(arg)
-    if e!= nil {
-        errList = append(errList, e)
-    }
-    return i
-}
-
-func Int64HideErr(errList []error, arg interface{}) int64{
-    i, e := Int64Parse(arg)
-    if e!= nil {
-        errList = append(errList, e)
-    }
-    return i
-}
 
 // 转为int型  --> INT
 func IntParse(arg interface{}) (ret int, err error){
@@ -68,4 +52,20 @@ func Int64Parse(arg interface{}) (ret int64, err error){
         err = ecode.UtilCanNotBeInt64.Error()
     }
     return
+}
+
+func IntHideErr(errList []error, arg interface{}) int{
+    i, e := IntParse(arg)
+    if e!= nil {
+        errList = append(errList, e)
+    }
+    return i
+}
+
+func Int64HideErr(errList []error, arg interface{}) int64{
+    i, e := Int64Parse(arg)
+    if e!= nil {
+        errList = append(errList, e)
+    }
+    return i
 }

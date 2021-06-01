@@ -45,6 +45,11 @@ func (c *Orm)beforeUpdate(m map[string]interface{}){
 }
 
 // 分页-分页布局
+func (c *Orm)Find(where interface{}, args ...interface{}) *Query{
+    return c.Select("*").From(c.Name).Where(where, args...)
+}
+
+// 分页-分页布局
 func (c *Orm)Page(pageSize int, pageNum int) *Query{
     // 整理数据
     if pageSize <=1 {
@@ -203,7 +208,7 @@ type ormTable struct {
 }
 
 // 根据各个数据库的句柄，创建ORM池
-func OrmInit(confName, app string, ormPath string){
+func OrmInit(confName, appName string, ormPath string){
     // 获取表结构
     conn := MYSQL.GetPool(confName)
     if conn == nil {
@@ -276,13 +281,13 @@ func OrmInit(confName, app string, ormPath string){
             Pk: tablePk,
             FieldArr: tableField,
             Field: tableColumns,
-        }, app, ormPath)
+        }, appName, ormPath)
     }
 
 }
 
 // 创建ORM文件  /orm/$app+_tmp/ [$table1.go, $table2.go, ...]
-func createOrmTable(table ormTable, app string, ormPath string){
+func createOrmTable(table ormTable, appName string, ormPath string){
     var ret = `package {package}
 
 import (
@@ -336,7 +341,7 @@ func {Table}() *{Table.Name}{
         }
     }
 
-    ret =  strings.Replace(ret, "{package}", app, -1)
+    ret =  strings.Replace(ret, "{package}", appName, -1)
     ret =  strings.Replace(ret, "{Table}", util.StrUFirstForSplit(table.Name, "_"), -1)
     ret =  strings.Replace(ret, "{Table.Name}", table.Name, -1)
     ret =  strings.Replace(ret, "{Table.Pk}", table.Pk, -1)
@@ -344,7 +349,7 @@ func {Table}() *{Table.Name}{
     ret =  strings.Replace(ret, "{Table.Filter}", TableFilter, -1)
 
     ormPath = util.FileRealPath(ormPath)
-    dir := ormPath + "/" + app + "_tmp/"
+    dir := ormPath + "/" + appName + "_tmp/"
     fileName := table.Name + ".go"
 
     if err := util.FileWrite(dir, fileName, ret); err!=nil{

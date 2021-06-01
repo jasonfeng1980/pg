@@ -3,6 +3,7 @@ package endpoint
 import (
     "context"
     "github.com/go-kit/kit/endpoint"
+    "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/micro/service"
 )
 
@@ -32,7 +33,8 @@ func (s Set) Call(ctx context.Context, dns string, params map[string]interface{}
     }
     resp, err := s.CallEndpoint(ctx, request)
     if err != nil {
-        return
+        _, msg := ecode.ReadError(err)
+        return ecode.CallServerPanic.Parse(dns, msg)
     }
     //return resp.(map[string]interface{})
     r := resp.(CallResponse)

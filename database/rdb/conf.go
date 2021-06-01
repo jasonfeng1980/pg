@@ -9,7 +9,7 @@ import (
 )
 
 type redisClass struct {
-    log util.Logger
+    log *util.Logger
     *redisPool
 }
 
@@ -27,7 +27,7 @@ var CTX = context.Background()
 //
 //////////////////////////////////////////////
 var Redis = &redisClass{
-    log: util.LogHandle(""),
+    log: util.Log.Logger,
     redisPool: &redisPool{
         Client:         make(map[string]*redis.Client),
         SentinelClient: make(map[string]*redis.Client),
@@ -61,15 +61,15 @@ func (r *redisClass)ClusterClient(name string) *redis.ClusterClient {
 func (r *redisClass)Close(){
     for k, v := range r.redisPool.Client {
         _ = v.Close()
-        r.log.Logf("关闭REDIS-Client - %s 的链接", k)
+        r.log.Infof("关闭REDIS-Client - %s 的链接", k)
     }
     for k, v := range r.redisPool.SentinelClient {
         _ = v.Close()
-        r.log.Logf("关闭REDIS-SentinelClient - %s 的链接", k)
+        r.log.Infof("关闭REDIS-SentinelClient - %s 的链接", k)
     }
     for k, v := range r.redisPool.ClusterClient {
         _ = v.Close()
-        r.log.Logf("关闭REDIS-ClusterClient - %s 的链接", k)
+        r.log.Infof("关闭REDIS-ClusterClient - %s 的链接", k)
     }
 
 }
@@ -91,7 +91,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Logf("连接Redis  %s(%v )   ----  成功", name, conn)
+                    r.log.Infof("连接Redis  %s(%v )   ----  成功", name, conn)
                     return nil
                 },
             })
@@ -117,7 +117,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Logf("开启新的链接conn=%v", conn)
+                    r.log.Infof("开启新的链接conn=%v", conn)
                     return nil
                 },
             })
@@ -138,7 +138,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Logf("开启新的链接conn=%v", conn)
+                    r.log.Infof("开启新的链接conn=%v", conn)
                     return nil
                 },
             })

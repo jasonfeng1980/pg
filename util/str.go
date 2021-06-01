@@ -3,6 +3,7 @@ package util
 import (
     "crypto/md5"
     "encoding/hex"
+    "fmt"
     "github.com/jasonfeng1980/pg/ecode"
     "strconv"
     "strings"
@@ -10,15 +11,11 @@ import (
 )
 
 
-func StrHideErr(errList []error, arg interface{}) string{
-    s, e := Str(arg)
-    if e!= nil {
-        errList = append(errList, e)
-    }
-    return s
+// 转换成字符串
+func StrParse(arg interface{}) string {
+    return fmt.Sprint(arg)
 }
-
-// 转换成字符串 -->string
+// 数字|bool|字符串 =>字符串 其他错误
 func Str(arg interface{})(ret string, err error){
     if arg == nil {
         return "", nil
@@ -46,6 +43,15 @@ func Str(arg interface{})(ret string, err error){
     return
 }
 
+// []int64 => []string
+func StrListInt(list []int64) []string {
+    box := make([]string, len(list))
+    for k, v := range list {
+        box[k] = StrParse(v)
+    }
+    return box
+}
+
 // 首字母大写
 func StrUFirst(str string) string {
     if len(str) < 1 {
@@ -69,7 +75,8 @@ func StrUFirstForSplit(str string, spe string) string{
     return ret
 }
 
-// 获取字符串格式 类似PHP的 mb_strlen
+// 获取字符串格式，中文算一个
+// "中国2" => 3
 func StrLen(str string) int{
     return utf8.RuneCountInString(str)
 }
@@ -81,16 +88,18 @@ func StrMd5(str string) string  {
     return hex.EncodeToString(h.Sum(nil))
 }
 
-func StrJoinFromInt(iList []int64, sep string) string{
+// []int64 => string
+// e.g. []int64{1,2,3,4} => "1,2,3,4"
+func StrJoinFromInt64(iList []int64, sep string) string{
     strBox := make([]string, len(iList))
     for k, v := range iList {
-        strBox[k], _ = Str(v)
+        strBox[k] = StrParse(v)
     }
     return strings.Join(strBox, sep)
 }
 
 // 逗号隔开字符串 变成 数字数组
-// "1,2,3,4" => []int{1, 2, 3, 4}
+// "1,2,3,4" => []int64{1, 2, 3, 4}
 func StrSplitToInt(str string) ([]int64, error) {
     if str == "" {
         return nil, nil

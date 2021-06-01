@@ -1,8 +1,8 @@
 package util
 
-import (
-    "github.com/jasonfeng1980/pg/ecode"
-)
+import "github.com/jasonfeng1980/pg/ecode"
+
+type M map[string]interface{}
 
 // 获取一个map的 指定字段
 func MapField(data map[string]interface{}, fieldArr []string, must bool) (ret map[string]interface{}, err error) {
@@ -19,7 +19,7 @@ func MapField(data map[string]interface{}, fieldArr []string, must bool) (ret ma
 }
 
 // 增量合并
-func MapMergeForNew(base map[string]interface{}, others ...map[string]interface{}) (ret map[string]interface{}){
+func MapMerge(base map[string]interface{}, others ...map[string]interface{}) (ret map[string]interface{}){
     if base == nil {
         ret = make(map[string]interface{})
     } else {
@@ -60,14 +60,12 @@ func MapKeys(m interface{}) (keys []string) {
     return
 }
 
-// 变成map[string]string
-func MapInterfaceToString(m map[string]interface{}) (ret map[string]string, err error){
-    var tmp string
+// map interface变字符串
+// map[string]interface => map[string]string
+func MapInterfaceToString(m map[string]interface{})  map[string]string{
+    ret := make(map[string]string, len(m))
     for k, v := range m {
-        if tmp, err = Str(v); err != nil {
-            break
-        }
-        ret[k] = tmp
+        ret[k] = StrParse(v)
     }
-    return
+    return ret
 }

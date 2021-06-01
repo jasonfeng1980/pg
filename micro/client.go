@@ -14,6 +14,7 @@ import (
     callHttp "github.com/jasonfeng1980/pg/micro/transport/http"
     "github.com/jasonfeng1980/pg/util"
     stdopentracing "github.com/opentracing/opentracing-go"
+    zipkinot "github.com/openzipkin-contrib/zipkin-go-opentracing"
     zipkin "github.com/openzipkin/zipkin-go"
     "github.com/openzipkin/zipkin-go/reporter"
     zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
@@ -25,7 +26,7 @@ import (
 
 type Client struct {
     Conf callConf.Config
-    ZipkinTracer *zipkin.Tracer
+    //ZipkinTracer *zipkin.Tracer
     Tracer stdopentracing.Tracer
     Report  reporter.Reporter
     Middleware []endpoint.Middleware
@@ -36,7 +37,7 @@ type H map[string]interface{}
 // 客户端
 // e.g. http://serverName/module/version/action
 // e.g. grpc://serverName/module/version/action
-func (c *Client)Call(dns string, params map[string]interface{}) (data interface{}, code int64, msg string){
+func (c *Client)Call(ctx context.Context, dns string, params map[string]interface{}) (data interface{}, code int64, msg string){
     m, e:= url.Parse(dns)
     if e != nil {
         return ecode.HttpDnsParseWrong.Parse()
@@ -46,7 +47,7 @@ func (c *Client)Call(dns string, params map[string]interface{}) (data interface{
     // 添加中间件
     svc = svc.AddMiddleware(c.Middleware)
 
-    return svc.Call(context.Background(), dns, params)
+    return svc.Call(ctx, dns, params)
 }
 
 func (c *Client)Close() {
@@ -55,21 +56,22 @@ func (c *Client)Close() {
 
 // 链路跟踪
 func (c *Client)InitTraceClient() {
-    var err error
-    c.Tracer = stdopentracing.GlobalTracer()
+    //var err error
     if c.Conf.ZipkinUrl == "" {
+        c.Tracer =  stdopentracing.GlobalTracer()
         return
     }
 
-    util.LogHandle("info").Log("tracer", "Zipkin", "type", "Native", "URL", c.Conf.ZipkinUrl)
     //创建zipkin上报管理器
     c.Report    = zipkinhttp.NewReporter(c.Conf.ZipkinUrl)
 
     //创建trace跟踪器
     zEP, _ := zipkin.NewEndpoint(c.Conf.ServerName + ":" + c.Conf.ServerNo, "")
-    c.ZipkinTracer, err = zipkin.NewTracer(c.Report, zipkin.WithLocalEndpoint(zEP))
+    zipkinTracer, err := zipkin.NewTracer(c.Report, zipkin.WithLocalEndpoint(zEP))
+
+    c.Tracer = zipkinot.Wrap(zipkinTracer)
     if err != nil {
-        util.LogHandle("error").Log("err", err)
+        util.Log.Error(err)
         panic("zipkintracer err:" + err.Error())
     }
 }
@@ -83,11 +85,11 @@ func (c *Client)getSvcFromEtcd(serverName string, scheme string) callendpoint.Se
         factoryFunc = func(instanceAddr string) (endpoint.Endpoint, io.Closer, error) {
             conn, err := grpc.DialContext(context.Background(), instanceAddr, grpc.WithInsecure())
             if err != nil {
-                util.LogHandle("error").Log("error", err.Error())
+                util.Log.Error(err.Error())
                 panic(fmt.Sprintf("连接GRPC失败：%s", instanceAddr))
             }
             eps, err := callGrpc.NewClient(conn,
-                callGrpc.DefaultClientOptions(c.Tracer, c.ZipkinTracer),
+                callGrpc.DefaultClientOptions(c.Tracer),
             )
             return eps.CallEndpoint, conn, nil
         }
@@ -95,14 +97,14 @@ func (c *Client)getSvcFromEtcd(serverName string, scheme string) callendpoint.Se
         prefix  = fmt.Sprintf("/%s/http/", serverName)
         factoryFunc = func(instanceAddr string) (endpoint.Endpoint, io.Closer, error) {
             eps, err := callHttp.NewClient(instanceAddr,
-                callHttp.DefaultClientOptions(c.Tracer, c.ZipkinTracer),
+                callHttp.DefaultClientOptions(c.Tracer),
             )
             return eps.CallEndpoint, nil, err
         }
     }
 
     //创建etcd连接
-    logEtcd := util.LogHandle("etcd")
+    logEtcd := util.Log
     client, err := etcdv3.NewClient(c.Ctx,
         []string{c.Conf.EtcdAddr},
         etcdv3.ClientOptions{
@@ -110,14 +112,14 @@ func (c *Client)getSvcFromEtcd(serverName string, scheme string) callendpoint.Se
             DialKeepAlive: c.Conf.EtcdKeepAlive,
         })
     if err != nil {
-        logEtcd.Log("err", err.Error())
-        panic(err)
+        logEtcd.With( "server", prefix).Error(err.Error())
+        panic(ecode.EtcdDisconnect.Error(c.Conf.EtcdAddr, err.Error()))
     }
 
     instancer, e := etcdv3.NewInstancer(client, prefix, logEtcd)
     if e != nil {
-        logEtcd.Log("err", err.Error())
-        panic(err)
+        logEtcd.With( "server", prefix).Error(err.Error())
+        panic(ecode.NoMicroServer.Error(prefix, err.Error()))
     }
     endpointer := sd.NewEndpointer(instancer, factoryFunc, logEtcd)
 

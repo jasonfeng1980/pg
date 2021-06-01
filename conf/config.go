@@ -2,6 +2,7 @@ package conf
 
 import (
     "github.com/sony/gobreaker"
+    "github.com/streadway/amqp"
     "golang.org/x/time/rate"
     "time"
 )
@@ -48,22 +49,33 @@ type Config struct {
     BreakerServer gobreaker.Settings      // 熔断配置
     BreakerClient gobreaker.Settings      // 熔断配置
 
+    // 缓存redis 别名
+    CacheRedis string
+    CacheSec   int64
+
     // MYSQL
     MySQLConf  map[string]MysqlConfigs
+    // Mongo
+    MongoConf  map[string]MongoConf
     // REDIS
     RedisConf  map[string]RedisConf
+    // RabbitMQ
+    RabbitMQConf map[string]RabbitMQConf
 
 }
 
-var systemConf = DefaultConf
-func Set(c Config){
-    systemConf = c
-}
-func Get() Config {
-    return systemConf
-}
+//// 全局的配置
+//var systemConf = DefaultConf
+//func Set(c Config){
+//    systemConf = c
+//}
+//func Get() Config {
+//    return systemConf
+//}
 
-
+/////////////////////////////////////////////////
+//  Redis
+/////////////////////////////////////////////////
 type RedisConf struct{
     RedisType string
     Network string
@@ -81,6 +93,9 @@ type RedisConf struct{
     IdleTimeout time.Duration // 空闲持续时间 默认5分钟
 }
 
+/////////////////////////////////////////////////
+//  Mysql
+/////////////////////////////////////////////////
 type MysqlConf struct {
     Driver  string
     User    string
@@ -98,4 +113,37 @@ type MysqlConf struct {
 type MysqlConfigs struct {
     W MysqlConf
     R MysqlConf
+}
+
+/////////////////////////////////////////////////
+//  Mongo
+/////////////////////////////////////////////////
+type MongoConf struct {
+    Dns        string
+    Timeout    time.Duration
+    AllowDiskUse bool
+    Database   string
+}
+
+
+
+/////////////////////////////////////////////////
+//  RabbitMQ
+/////////////////////////////////////////////////
+type RabbitMQConf struct {
+    Dns string  `yaml:"Dns"`                                    // 服务器DNS
+    Exchange map[string]RabbitMQExchange   `yaml:"Exchange"`    // 拥有的交换机
+}
+type RabbitMQQuery struct {
+    Routing   []string            `yaml:"Routing"`
+    Info      [4]bool            `yaml:"Info"`          // durable 持久化, autoDelete 自动删除, exclusive 排他, NoWait 不需要服务器的任何返回
+    Delay     []int64             `yaml:"Delay"`        // 死信队列延时，单位秒
+    Qos       []int     `yaml:"Qos"`           // count, size, global (int int bool)
+    Args    amqp.Table           `yaml:"Args"`      // x-expires, x-max-length, x-max-length-bytes, x-message-ttl, x-max-priority, x-queue-mode, x-queue-master-locator
+}
+type RabbitMQExchange struct {
+    Kind    string          `yaml:"Kind"`               // type fanout|direct|topic
+    Info    [4]bool          `yaml:"Info"`              // durable, auto-deleted, internal, no-wait
+    Args    amqp.Table           `yaml:"Args"`      // x-expires, x-max-length, x-max-length-bytes, x-message-ttl, x-max-priority, x-queue-mode, x-queue-master-locator
+    Query   map[string]RabbitMQQuery    `yaml:"Query"`  // 队列
 }

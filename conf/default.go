@@ -5,9 +5,8 @@ import (
     "golang.org/x/time/rate"
     "runtime"
     "time"
-
-    "github.com/go-kit/kit/log"
 )
+
 
 var DefaultConf = Config{
     ServerName: "PG",
@@ -48,17 +47,17 @@ var DefaultConf = Config{
         Name:    "Gobreaker-server",
         Timeout: time.Second * 10,
         ReadyToTrip: func(counts gobreaker.Counts) bool {
-           if counts.TotalFailures > 100 || counts.ConsecutiveFailures > 10 {
-               return true
-           }
-           return false
+            if counts.TotalFailures > 100 || counts.ConsecutiveFailures > 10 {
+                return true
+            }
+            return false
         },
         OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
-           if to == gobreaker.StateOpen {
-               log.With(log.NewNopLogger(), "type", "warnning", "from", name, "to", to)
-           } else {
-               log.With(log.NewNopLogger(),"from", name, "to", to)
-           }
+            //if to == gobreaker.StateOpen {
+            //   log.With(log.NewNopLogger(), "type", "warnning", "from", name, "to", to)
+            //} else {
+            //   log.With(log.NewNopLogger(),"from", name, "to", to)
+            //}
         },
     },
     BreakerClient: gobreaker.Settings{

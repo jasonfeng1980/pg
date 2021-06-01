@@ -2,40 +2,31 @@ package http
 
 import (
     "context"
+    "github.com/go-kit/kit/tracing/opentracing"
     "github.com/jasonfeng1980/pg/ecode"
     callendpoint "github.com/jasonfeng1980/pg/micro/endpoint"
     "github.com/jasonfeng1980/pg/util"
     "net/http"
 
-    stdopentracing "github.com/opentracing/opentracing-go"
-    stdzipkin "github.com/openzipkin/zipkin-go"
-
-    "github.com/go-kit/kit/tracing/opentracing"
-    "github.com/go-kit/kit/tracing/zipkin"
     "github.com/go-kit/kit/transport"
     kitHttp "github.com/go-kit/kit/transport/http"
+    stdopentracing "github.com/opentracing/opentracing-go"
 )
 
 
-func DefaultClientOptions(otTracer stdopentracing.Tracer, zipkinTracer *stdzipkin.Tracer) []kitHttp.ClientOption {
-    logger := util.LogHandle("info")
+func DefaultClientOptions(otTracer stdopentracing.Tracer) []kitHttp.ClientOption {
+    logger := util.Log
     opts := []kitHttp.ClientOption{
         kitHttp.ClientBefore(opentracing.ContextToHTTP(otTracer,  logger)),
-    }
-    if zipkinTracer != nil {
-        opts = append(opts, zipkin.HTTPClientTrace(zipkinTracer))
     }
     return opts
 }
 
-func DefaultServerOptions(otTracer stdopentracing.Tracer, zipkinTracer *stdzipkin.Tracer) []kitHttp.ServerOption {
-    logger := util.LogHandle("error")
+func DefaultServerOptions(otTracer stdopentracing.Tracer) []kitHttp.ServerOption {
+    logger := util.Log
     opts := []kitHttp.ServerOption{
         kitHttp.ServerErrorEncoder(errorEncoder),
         kitHttp.ServerErrorHandler(transport.NewLogErrorHandler(logger)),
-    }
-    if zipkinTracer != nil {
-        opts = append(opts, zipkin.HTTPServerTrace(zipkinTracer))
     }
     opts = append(opts, kitHttp.ServerBefore(opentracing.HTTPToContext(otTracer, "Call", logger)))
     return opts
