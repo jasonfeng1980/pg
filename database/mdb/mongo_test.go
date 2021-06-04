@@ -1,9 +1,9 @@
 package mdb
 
 import (
-    "fmt"
     "github.com/jasonfeng1980/pg"
     "github.com/jasonfeng1980/pg/conf"
+    "github.com/jasonfeng1980/pg/util"
     "go.mongodb.org/mongo-driver/bson"
     "testing"
 )
@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 
     user, pingErr = MONGO.Get("USER")
     if pingErr != nil {
-        fmt.Println("无法链接mongo")
+        util.Log.Error("无法链接mongo")
     }
     m.Run()
 }
@@ -44,7 +44,7 @@ func TestQuery_Select(t *testing.T) {
         //OrderBy("info.sex, info.name asc").
         //Limit(1, 5).
         Count()
-    fmt.Println(num, err)
+    util.Log.Debugln(num, err)
 
     ret, err := user.Select().
         From("user").
@@ -62,7 +62,7 @@ func TestQuery_Select(t *testing.T) {
         Array()
     for k, v := range ret {
         info := v["info"].(map[string]interface{})
-        fmt.Println(k, "token:", v["token"], "sex:", info["sex"], "name:", info["name"])
+        util.Log.Debugln(k, "token:", v["token"], "sex:", info["sex"], "name:", info["name"])
     }
 
 
@@ -85,7 +85,7 @@ func TestQuery_GroupBy(t *testing.T) {
         t.Error(err)
     }
     for k, v := range ret {
-        fmt.Println(k, v)
+        util.Log.Debugln(k, v)
     }
 }
 
@@ -117,7 +117,7 @@ func TestQuery_Insert(t *testing.T) {
         Into("user").
         Query().
         LastInsertId()
-    fmt.Println(ret, err)
+    util.Log.Debugln(ret, err)
 
 }
 
@@ -132,7 +132,7 @@ func TestQuery_Update(t *testing.T) {
         //Upsert(true).
         Query().
         RowsAffected()
-    fmt.Println(ret, err)
+    util.Log.Debugln(ret, err)
 }
 
 func TestQuery_Delete(t *testing.T) {
@@ -142,5 +142,5 @@ func TestQuery_Delete(t *testing.T) {
         One(true).
         Query().
         RowsAffected()
-    fmt.Println(ret, err)
+    util.Log.Debugln(ret, err)
 }

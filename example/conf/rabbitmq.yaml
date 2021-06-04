@@ -1,5 +1,5 @@
-User:
-  Dns:  "amqp://guest:guest@localhost:5672/"
+USER:
+  Dns:  "amqp://guest:guest@localhost:5672//test"
   Exchange:
     logs:
       Kind:   direct          # type fanout|direct|topic, durable

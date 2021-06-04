@@ -1,7 +1,6 @@
 package conf
 
 import (
-    "fmt"
     "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/util"
     "regexp"
@@ -11,6 +10,7 @@ import (
 type YamlConf struct {
     Root   string
     ServerConf *Config
+    tmpConf map[string][]string
     Err    error
 }
 func (y *YamlConf)Set(){
@@ -50,7 +50,34 @@ func (y *YamlConf)Server(filePath string) *YamlConf{
     serverConf.BreakerServer = DefaultConf.BreakerServer
     serverConf.BreakerClient = DefaultConf.BreakerClient
 
+    // 添加用到的mysql，mongo，redis， rabbitmq
+    y.tmpConf = make(map[string][]string)
+    if v, ok := m["MySQL"]; ok {
+        y.tmpConf["MySQL"] = util.ListInterfaceToStr(v.([]interface{}))
+    }
+    if v, ok := m["Mongo"]; ok {
+        y.tmpConf["Mongo"] = util.ListInterfaceToStr(v.([]interface{}))
+    }
+    if v, ok := m["Redis"]; ok {
+        y.tmpConf["Redis"] = util.ListInterfaceToStr(v.([]interface{}))
+    }
+    if v, ok := m["RabbitMQ"]; ok {
+        y.tmpConf["RabbitMQ"] = util.ListInterfaceToStr(v.([]interface{}))
+    }
+
     y.ServerConf = serverConf
+
+    // 修改默认日志
+    if y.ServerConf.LogDir == "<nil>" {
+        y.ServerConf.LogDir = ""
+    }
+    if y.ServerConf.LogDir != ""  {
+        if y.ServerConf.LogDir[:1] != "/" {
+            y.ServerConf.LogDir = y.ServerConf.ServerRoot + "/" + y.ServerConf.LogDir
+        }
+    }
+    util.LogInit(y.ServerConf.LogDir, y.ServerConf.LogShowDebug, y.ServerConf.ServerName)
+
     return y
 }
 func (y *YamlConf)serverMapConf(m map[string]interface{}) (*Config, error){
@@ -75,7 +102,7 @@ func (y *YamlConf)serverMapConf(m map[string]interface{}) (*Config, error){
 
         // 日志
         LogDir:      util.StrParse(m["LogDir"]),        // 日志文件夹 成功 access.年月日.小时.log 失败 error.201012.13.log
-        LogShowDebug: util.StrParse(m["LogDir"]) == "true",     // 是否记录测试日志
+        LogShowDebug: util.StrParse(m["LogDebug"]) == "true",     // 是否记录测试日志
 
         // 网站配置
         WebMaxBodySizeM:     util.Int64HideErr(errList, m["WebMaxBodySizeM"])<<20,   // 最大允许上传的大小
@@ -117,7 +144,10 @@ func (y *YamlConf)Redis(filePath string) *YamlConf{
     if y.Err != nil {
         return y
     }
-    redisConf := make(map[string]RedisConf)
+    if _, ok := y.tmpConf["Redis"]; !ok { // 没有server配置 就返回
+        return y
+    }
+    y.ServerConf.RedisConf = make(map[string]RedisConf)
     var m map[string]map[string]string
     err := y.YamlRead(filePath, &m)
     if err != nil {
@@ -125,14 +155,16 @@ func (y *YamlConf)Redis(filePath string) *YamlConf{
         return y
     }
     for n, line := range m {
+        if !util.ListHave(y.tmpConf["Redis"], n) {
+            continue
+        }
         conf, err := y.redisSetConf(line)
         if err != nil {
             y.Err = err
             return y
         }
-        redisConf[n] = *conf
+        y.ServerConf.RedisConf[n] = *conf
     }
-    y.ServerConf.RedisConf = redisConf
     return y
 }
 
@@ -178,7 +210,10 @@ func (y *YamlConf)Mongo(filePath string) *YamlConf {
     if y.Err != nil {
         return y
     }
-    mongoConf := make(map[string]MongoConf)
+    if _, ok := y.tmpConf["Mongo"]; !ok { // 没有server配置 就返回
+        return y
+    }
+    y.ServerConf.MongoConf = make(map[string]MongoConf)
     var m map[string]map[string]string
     err := y.YamlRead(filePath, &m)
     if err != nil {
@@ -186,14 +221,16 @@ func (y *YamlConf)Mongo(filePath string) *YamlConf {
         return y
     }
     for n, line := range m {
+        if !util.ListHave(y.tmpConf["Mongo"], n) {
+            continue
+        }
         conf, err := y.mongoSetConf(line)
         if err != nil {
             y.Err = err
             return y
         }
-        mongoConf[n] = *conf
+        y.ServerConf.MongoConf[n] = *conf
     }
-    y.ServerConf.MongoConf = mongoConf
     return y
 }
 func (y *YamlConf)mongoSetConf(confList map[string]string) (*MongoConf, error){
@@ -221,7 +258,10 @@ func (y *YamlConf)mongoSetConf(confList map[string]string) (*MongoConf, error){
 ////////////////////////////////
 func (y *YamlConf) Rabbitmq(filePath string) *YamlConf {
     if y.Err != nil {
-        fmt.Println(y.Err)
+        util.Log.Error(y.Err)
+    }
+    if _, ok := y.tmpConf["RabbitMQ"]; !ok { // 没有server配置 就返回
+        return y
     }
     m := make(map[string]RabbitMQConf)
     err := y.YamlRead(filePath, &m)
@@ -229,7 +269,13 @@ func (y *YamlConf) Rabbitmq(filePath string) *YamlConf {
         y.Err = err
         return y
     }
-    y.ServerConf.RabbitMQConf = m
+    y.ServerConf.RabbitMQConf = make(map[string]RabbitMQConf)
+    for n, c := range m {
+        if !util.ListHave(y.tmpConf["RabbitMQ"], n) {
+            continue
+        }
+        y.ServerConf.RabbitMQConf[n] = c
+    }
     return y
 }
 ////////////////////////////////
@@ -240,7 +286,10 @@ func (y *YamlConf)Mysql(filePath string) *YamlConf {
     if y.Err!=nil {
         return y
     }
-    mysqlConf := make(map[string]MysqlConfigs)
+    if _, ok := y.tmpConf["MySQL"]; !ok { // 没有server配置 就返回
+        return y
+    }
+    y.ServerConf.MySQLConf = make(map[string]MysqlConfigs)
     var m map[string]map[string]string
     err := y.YamlRead(filePath, &m)
     if err != nil {
@@ -249,13 +298,15 @@ func (y *YamlConf)Mysql(filePath string) *YamlConf {
     }
     // 循环赋值
     for n, line := range m {
+        if !util.ListHave(y.tmpConf["MySQL"], n) {
+            continue
+        }
         conf, err := y.mysqlMapConf(line)
         if err != nil {
             panic(err)
         }
-        mysqlConf[n] = *conf
+        y.ServerConf.MySQLConf[n] = *conf
     }
-    y.ServerConf.MySQLConf = mysqlConf
     return y
 }
 func (y *YamlConf)mysqlMapConf(confList map[string]string) (*MysqlConfigs, error){

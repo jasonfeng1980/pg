@@ -3,6 +3,7 @@ package service
 import (
     "context"
     "fmt"
+    "github.com/jasonfeng1980/pg/util"
     "strings"
     "sync"
 )
@@ -41,7 +42,7 @@ func Api () *api {
 // 注册新的mapping
 func (api *api) Register(httpMethod string, module string, version string, action string, someFunc Action){
     httpMethod = strings.ToUpper(httpMethod)
-    fmt.Printf("添加[%s]方法%s/%s/%s\n", httpMethod, module, version, action)
+    util.Log.Debugf("添加[%s]方法%s/%s/%s\n", httpMethod, module, version, action)
     key := api.makeApiKey(module, version, action)
     if _, ok := api.mapping[key]; ok {
         panic(fmt.Sprintf("方法重复： %s/%s/%s\n", module, version, action))

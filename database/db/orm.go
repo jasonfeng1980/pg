@@ -226,7 +226,7 @@ func OrmInit(confName, appName string, ormPath string){
     for _, line:= range rs {
         tableArr = append(tableArr, line["Tables_in_" + dbName].(string))
     }
-    fmt.Println("获取表结构", tableArr)
+    util.Log.Infoln("获取表结构", tableArr)
 
     // 循环表获取各个字段
     for _, table := range tableArr {
@@ -353,10 +353,10 @@ func {Table}() *{Table.Name}{
     fileName := table.Name + ".go"
 
     if err := util.FileWrite(dir, fileName, ret); err!=nil{
-        fmt.Println("创建ORM文件：", dir, fileName , "  失败! -- Error")
-        fmt.Println(err.Error())
+        util.Log.Infoln("创建ORM文件：", dir, fileName , "  失败! -- Error")
+        util.Log.Infoln(err.Error())
     } else {
-        fmt.Println("创建ORM文件：", dir, fileName , "  成功! -- OK")
+        util.Log.Infoln("创建ORM文件：", dir, fileName , "  成功! -- OK")
     }
 }
 

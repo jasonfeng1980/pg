@@ -40,7 +40,7 @@ func (m *Mongo)Conn(mdbConf map[string]conf.MongoConf){
             panic("Mongo创建连接失败: " + mdbErr.Error())
         }
         m.Pool[conf.Dns] = client
-        m.log.Infof("连接MONGO   (dns:%s,database: %s ) ----  成功", conf.Dns, conf.Database)
+        m.log.Debugf("连接MONGO   (dns:%s,database: %s ) ----  成功", conf.Dns, conf.Database)
     }
 }
 
@@ -63,7 +63,7 @@ func (m *Mongo)Get(name string)(*Query, error){
 
 func (m *Mongo)Close(){
     for dns, client := range m.Pool {
-        m.log.Infof("关闭Mongo链接 - 【%s】", dns)
+        m.log.Debugf("关闭Mongo - 【%s】的链接", dns)
         client.Disconnect(m.ctx)
     }
 }

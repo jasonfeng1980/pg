@@ -6,6 +6,7 @@ import (
     "github.com/go-redis/redis/v8"
     _ "github.com/go-sql-driver/mysql"
     "github.com/jasonfeng1980/pg/conf"
+    "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/util"
     "strings"
     "time"
@@ -92,20 +93,20 @@ func (m *mySQL)getConn(name string) (conn *Conn, ok bool){
 }
 
 // 获取新的执行QUERY
-func (m *mySQL)Get(name string)(*Query, bool){
+func (m *mySQL)Get(name string)(*Query, error){
     name = strings.ToUpper(name)
     conn, ok := m.getConn(name)
     if !ok {
-        return nil, false
+        return nil, ecode.DbWrongConfName.Error("mysql", name)
     } else {
-        return conn.new(), true
+        return conn.new(), nil
     }
 }
 
 // 关闭读写的链接
 func (m *mySQL)Close(){
     for k, v := range m.openConn {
-        m.log.Infof("关闭mysql - %s 的链接", k)
+        m.log.Debugf("关闭mysql - %s 的链接", k)
         v.Close()
     }
 }
@@ -131,6 +132,6 @@ func (m *mySQL)conn(conf conf.MysqlConf) (db *sql.DB) {
     db.SetConnMaxLifetime(conf.ConnMaxLifetime)
     // 缓存链接
     m.openConn[dbDSN] = db
-    m.log.Infof("连接MYSQL   (%s : %d )/%s ----  成功", conf.Host, conf.Port, conf.Database)
+    m.log.Debugf("连接MYSQL   (%s : %d )/%s ----  成功", conf.Host, conf.Port, conf.Database)
     return
 }

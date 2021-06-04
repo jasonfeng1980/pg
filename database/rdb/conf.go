@@ -4,6 +4,7 @@ import (
     "context"
     "github.com/go-redis/redis/v8"
     "github.com/jasonfeng1980/pg/conf"
+    "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/util"
     "strings"
 )
@@ -43,33 +44,45 @@ func (r *redisClass)Conn(redisConf map[string]conf.RedisConf){
     r.initPool(redisConf)
 }
 // 单机模式
-func (r *redisClass)Client(name string)  *redis.Client{
+func (r *redisClass)Client(name string)  (*redis.Client, error){
     name = strings.ToUpper(name)
-    return r.redisPool.Client[name]
+    ret, ok := r.redisPool.Client[name]
+    if !ok {
+        return nil, ecode.DbWrongConfName.Error("redis-Client", name)
+    }
+    return ret, nil
 }
 // 哨兵模式
-func (r *redisClass)SentinelClient(name string) *redis.Client{
+func (r *redisClass)SentinelClient(name string) (*redis.Client, error){
     name = strings.ToUpper(name)
-    return r.redisPool.SentinelClient[name]
+    ret, ok := r.redisPool.SentinelClient[name]
+    if !ok {
+        return nil, ecode.DbWrongConfName.Error("redis-SentinelClient", name)
+    }
+    return ret, nil
 }
 // 集群模式
-func (r *redisClass)ClusterClient(name string) *redis.ClusterClient {
+func (r *redisClass)ClusterClient(name string) (*redis.ClusterClient, error) {
     name = strings.ToUpper(name)
-    return r.redisPool.ClusterClient[name]
+    ret, ok := r.redisPool.ClusterClient[name]
+    if !ok {
+        return nil, ecode.DbWrongConfName.Error("redis-ClusterClient", name)
+    }
+    return ret, nil
 }
 // 关闭链接
 func (r *redisClass)Close(){
     for k, v := range r.redisPool.Client {
         _ = v.Close()
-        r.log.Infof("关闭REDIS-Client - %s 的链接", k)
+        r.log.Debugf("关闭REDIS-Client - 【别名 %s】 的链接", k)
     }
     for k, v := range r.redisPool.SentinelClient {
         _ = v.Close()
-        r.log.Infof("关闭REDIS-SentinelClient - %s 的链接", k)
+        r.log.Debugf("关闭REDIS-SentinelClient - 【别名 %s】 的链接", k)
     }
     for k, v := range r.redisPool.ClusterClient {
         _ = v.Close()
-        r.log.Infof("关闭REDIS-ClusterClient - %s 的链接", k)
+        r.log.Debugf("关闭REDIS-ClusterClient - 【别名 %s】 的链接", k)
     }
 
 }
@@ -91,7 +104,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Infof("连接Redis  %s(%v )   ----  成功", name, conn)
+                    r.log.Debugf("连接Redis  %s(%v )   ----  成功", name, conn)
                     return nil
                 },
             })
@@ -117,7 +130,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Infof("开启新的链接conn=%v", conn)
+                    r.log.Debugf("开启新的链接conn=%v", conn)
                     return nil
                 },
             })
@@ -138,7 +151,7 @@ func (r *redisClass)initPool(confArr map[string]conf.RedisConf){
 
                 //钩子函数
                 OnConnect: func(CTX context.Context, conn *redis.Conn) error { //仅当客户端执行命令时需要从连接池获取连接时，如果连接池需要新建连接时则会调用此钩子函数
-                    r.log.Infof("开启新的链接conn=%v", conn)
+                    r.log.Debugf("开启新的链接conn=%v", conn)
                     return nil
                 },
             })

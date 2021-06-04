@@ -25,7 +25,8 @@ func New(mw []Middleware) Service {
 type callService struct {}
 type H map[string]interface{}
 
-const UploadFile = "PG_UPLOAD_FILE__"
+const UploadFile = util.UploadFile
+const RequestHandle = "__PG_REQUEST"
 
 func (c callService) Call(ctx context.Context, dns string, params map[string]interface{}) (data interface{}, code int64, msg string){
     defer func() {
@@ -51,10 +52,14 @@ func (c callService) Call(ctx context.Context, dns string, params map[string]int
     if !ok {
         return ecode.HttpCannotMatchDns.Parse(l[1], l[2], l[3])
     } else {
-        // 如果有文件上传 params里有 _FILE_
+        // 如果有文件上传 params里有 _FILE_   request
         if v, o := params[UploadFile]; o {
             ctx = context.WithValue(ctx, UploadFile, v)
             delete(params, UploadFile)
+        }
+        if v, o := params[RequestHandle]; o {
+            ctx = context.WithValue(ctx, RequestHandle, v)
+            delete(params, RequestHandle)
         }
 
         return someFunc(ctx, params)
@@ -63,15 +68,3 @@ func (c callService) Call(ctx context.Context, dns string, params map[string]int
 func NewCallService() Service { // 将 callService 变成 接口 Service
     return &callService{}
 }
-//func doCallFunc(someFunc Action, ctx context.Context, params map[string]interface{}) (data interface{}, code int64, msg string){
-//    defer func(ctx context.Context) {
-//        callErr := ""
-//        if err:=recover(); err!=nil{
-//            callErr = fmt.Sprint(err)
-//            util.LogHandle("error").Log("panic", callErr)
-//        }
-//        ctx = context.WithValue(ctx, "CallErr", callErr)
-//    }(ctx)
-//
-//    return someFunc(ctx, params)
-//}

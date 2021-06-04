@@ -2,7 +2,7 @@
 DEMO:
   RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
   Network:  tcp         # 链接方式 tcp | unix
-  Addr:     docker.for.mac.host.internal:6379 # 服务地址，主机名:端口，默认localhost:6379
+  Addr:     localhost:6379 # 服务地址，主机名:端口，默认localhost:6379
   Password:             # 密码  就是auth的部分
   DB:       0           # 数据库
   MasterName:           # 哨兵模式的 MasterName
@@ -16,7 +16,7 @@ DEMO:
 TEST:
   RedisType: CLIENT       # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
   Network:  tcp         # 链接方式 tcp | unix
-  Addr:     docker.for.mac.host.internal:6379 # 服务地址，主机名:端口，默认localhost:6379
+  Addr:     localhost:6379 # 服务地址，主机名:端口，默认localhost:6379
   Password:             # 密码  就是auth的部分
   DB:       0           # 数据库
   MasterName:           # 哨兵模式的 MasterName

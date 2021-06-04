@@ -8,12 +8,14 @@ import (
     "os"
 )
 
+const UploadFile = "__PG_UPLOAD"
+
 type upload struct {
     FileHeader map[string][]*multipart.FileHeader
 }
 
 func Upload(ctx context.Context) (ret *upload, err error){
-    f := ctx.Value("PG_UPLOAD_FILE__")
+    f := ctx.Value(UploadFile)
     if v, ok := f.(map[string][]*multipart.FileHeader);ok {
         ret =  &upload{
             FileHeader: v,

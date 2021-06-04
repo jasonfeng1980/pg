@@ -2,8 +2,8 @@ ServerName: PG          # 服务名称
 ServerNo:   11          # 服务序号
 
 # 日志配置
-LogDir:      log        # 日志文件夹 info.年月日.log | error.201012.log
-LogShowDebug: true      # 是否记录测试日志
+LogDir:       ""      # 日志文件夹 info.年月日.log | error.201012.log
+LogDebug: true        # 是否记录测试日志
 
 # 网站配置
 WebMaxBodySizeM:     32 # 最大允许上传的大小，单位M
@@ -29,12 +29,24 @@ EtcdRetryTimeout: 30    # 重试超时时间 单位秒
 # 链路跟踪配置
 ZipkinUrl:  http://localhost:9411/api/v2/spans  # zipkin地址
 
+# 缓存redis别名
+CacheRedis:   DEMO
+CacheSec:     10
+
 # 限流，熔断无需配置，取默认的
 
 # MYSQL 取全局库的别名 + 权限  e.g.
 MySQL:
   - DEMO
 
+# Mongo 取全局库的别名
+Mongo:
+  - USER
+
 # REDIS 取全局库的别名
 Redis:
   - DEMO
+
+# Rabbitmq 取全局库的别名
+RabbitMQ:
+  - USER

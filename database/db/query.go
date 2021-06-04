@@ -54,6 +54,17 @@ type Query struct {
     tx *sql.Tx
 }
 
+//"$gt", "$gte", "$lt", "lte", "$ne", "$in", "$nin"
+var whereMap = map[string]string{
+    "$gt":  ">",
+    "$gte":  ">=",
+    "$lt":  "<",
+    "lte":  ">=",
+    "$ne":  "!=",
+    "$in":  "IN",
+    "$nin": "NOT IN",
+}
+
 
 // 清除options
 func (q *Query)Clear(){
@@ -133,19 +144,20 @@ func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
     switch where.(type) {
     case string:
         whereSql = where.(string)
+        whereSql, args = q.addWhereSql("", whereSql, args[0])
     case map[string]interface{}:
         for k, v := range where.(map[string]interface{}) {
-            if whereSql == "" {
-                whereSql = fmt.Sprintf("%s=? ", k)
-            } else {
-                whereSql = fmt.Sprintf("%s and %s=? ", whereSql, k)
-            }
+            //if whereSql == "" {
+            //    whereSql = fmt.Sprintf("%s=? ", k)
+            //} else {
+            //    whereSql = fmt.Sprintf("%s and %s=? ", whereSql, k)
+            //}
+            whereSql, args = q.addWhereSql(whereSql, k, v)
             args = append(args, v)
         }
     default:
         mList := q.toList(where)
         return q.Where(mList[0])
-        //panic(ecode.DbWrongWhere.Error())
     }
     if strings.Index(strings.ToLower(whereSql), " or ") > -1 { // 包含or
         whereSql =  "( " + whereSql + " )"
@@ -155,6 +167,49 @@ func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
         q.options.args["where"] = append(q.options.args["where"], v)
     }
     return q
+}
+
+func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w string, argV []interface{}){
+    midStr := "="
+    if len(args) == 1 {
+        h := reflect.ValueOf(args[0])
+        if h.Kind() == reflect.Map {// 如果是map
+            keyH := h.MapKeys()[0]
+            hKey := strings.ToLower(keyH.String())
+            switch hKey {
+            case "$gt", "$gte", "$lt", "lte", "$ne":
+                midStr = whereMap[hKey]
+                argV = append(argV, h.MapIndex(keyH).Interface())
+                key  = fmt.Sprintf("%s%s? ", key, midStr)
+            case "$in", "$nin":
+                len := 1
+                var wArg  []string
+                nV := reflect.ValueOf(h.MapIndex(keyH).Interface())
+                if nV.Kind() != reflect.Slice {
+                    argV = append(argV, h.MapIndex(keyH).Interface())
+                    wArg = append(wArg, "?")
+                } else {
+                    len = nV.Len()
+                    for i:=0; i<len; i++ {
+                        argV = append(argV, nV.Index(i).Interface())
+                        wArg = append(wArg, "?")
+                    }
+                }
+                midStr = whereMap[hKey]
+                key = fmt.Sprintf("%s %s (%s)", key, midStr, strings.Join(wArg, ","))
+            }
+        }
+    } else {
+        argV = args
+        key  = fmt.Sprintf("%s%s? ", key, midStr)
+    }
+
+    if base == "" {
+        w = key
+    } else {
+        w = fmt.Sprintf("%s and %s ", base, key)
+    }
+    return
 }
 
 func (q *Query)GroupBy(fields string) *Query{
@@ -324,7 +379,7 @@ func (q *Query)Cache(useCache bool) *Query{
     if MYSQL.CacheRedisClient != nil { // 如果配置了 缓存redis
         q.options.useCache = useCache
     } else {
-        panic("没有配置缓存redis，无法使用MYSQL CACHE")
+        util.Log.Infoln("没有配置缓存redis，无法使用MYSQL CACHE")
     }
     return q
 }
@@ -794,8 +849,10 @@ func (r *Result)setMap(rows *sql.Rows, t reflect.Type, columns []string) (reflec
             m.SetMapIndex(reflect.ValueOf(column), reflect.ValueOf(reflect.ValueOf(addrList[idx]).Elem().Elem().Int()))
         case reflect.Float64, reflect.Float32: // 浮点数
             m.SetMapIndex(reflect.ValueOf(column), reflect.ValueOf(reflect.ValueOf(addrList[idx]).Elem().Elem().Float()))
-        case reflect.String, reflect.Invalid: // 字符串
+        case reflect.String: // 字符串
             m.SetMapIndex(reflect.ValueOf(column), reflect.ValueOf(reflect.ValueOf(addrList[idx]).Elem().Elem().String()))
+        case reflect.Invalid:
+            m.SetMapIndex(reflect.ValueOf(column), reflect.ValueOf(""))
         case reflect.Slice:
             m.SetMapIndex(reflect.ValueOf(column), reflect.ValueOf(string(reflect.ValueOf(addrList[idx]).Elem().Elem().Bytes())))
         default: // 默认

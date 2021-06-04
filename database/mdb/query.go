@@ -10,7 +10,6 @@ import (
     "go.mongodb.org/mongo-driver/bson"
     "go.mongodb.org/mongo-driver/mongo"
     "go.mongodb.org/mongo-driver/mongo/options"
-    "os"
     "reflect"
     "strings"
 )
@@ -257,11 +256,11 @@ func (q *Query)Delete() *Query{
     return q
 }
 
-func (q *Query)buildSql() (retSql string, args []interface{}){
+// 将mongo命令整理成sql语句
+func (q *Query)buildSql() (retSql string, args []interface{}){// @todo
     for k, v := range q.options.where {
         fmt.Println(k, v)
     }
-    os.Exit(1)
     return
 }
 // 统计配置

@@ -50,6 +50,8 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
             params[service.UploadFile] = files
         }
     }
+
+    params[service.RequestHandle] = r
     return
 }
 

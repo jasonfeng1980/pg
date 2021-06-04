@@ -58,7 +58,7 @@ func (s *Server) Close() {
     }
 }
 
-func (s *Server) connDB(){
+func (s *Server) ConnDB(){
     s.ctx = context.Background()
     // 链接MYSQL连接池
     db.MYSQL.Conn(s.Conf.MySQLConf)
@@ -69,9 +69,13 @@ func (s *Server) connDB(){
     // 连接redis连接池
     rdb.Redis.Conn(s.Conf.RedisConf)
     s.AddCloseFunc(rdb.Redis.Close)
-    // 设置MYSQL缓存redis  - 缓存10秒
+    // 设置MYSQL缓存redis句柄
     if s.Conf.CacheRedis != "" {
-        db.MYSQL.SetCacheRedis(rdb.Redis.Client(s.Conf.CacheRedis), time.Second * time.Duration(s.Conf.CacheSec))
+        if r, err := rdb.Redis.Client(s.Conf.CacheRedis); err == nil {
+            db.MYSQL.SetCacheRedis(r, time.Second * time.Duration(s.Conf.CacheSec))
+        } else {
+            util.Log.Errorln(err)
+        }
     }
     // 链接rabbitmq
     rabbitmq.RabbitMq.Conn(s.Conf.RabbitMQConf)
@@ -83,8 +87,7 @@ func (s *Server) Script(f ScriptFunc){
     defer s.Close()
 
     // 链接数据库和MQ
-    s.connDB()
-
+    s.ConnDB()
 
     var g group.Group
     // 优雅退出
@@ -92,7 +95,7 @@ func (s *Server) Script(f ScriptFunc){
     // 开始执行脚本方法
     initScriptFunc(&g, f)
 
-    util.Log.Info("exit", g.Run())
+    util.Log.Debugf("exit", g.Run())
 
 }
 func initScriptFunc(g *group.Group, f ScriptFunc) {
@@ -110,7 +113,7 @@ func (s *Server) Run() {
 
     logger := util.Log
     // 链接数据库和MQ
-    s.connDB()
+    s.ConnDB()
 
     // 链路跟踪
     tracer, reporter := initTraceServer(s.Conf)
@@ -145,7 +148,7 @@ func (s *Server) Run() {
     // 服务发现-etcd
     initEtcdServer(s.ctx, s.Conf)
 
-    util.Log.Info("exit", g.Run())
+    util.Log.Debugf("exit", g.Run())
 }
 // 链路跟踪
 func initTraceServer(conf callConf.Config) (stdopentracing.Tracer, reporter.Reporter){

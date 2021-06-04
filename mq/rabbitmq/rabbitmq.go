@@ -32,7 +32,7 @@ func (r *rabbitMQ)conn(dnsName string) (*amqp.Connection, error) {
     if l, ok := r.Conf[dnsName]; ok {
         // 链接
         conn, err := amqp.Dial(l.Dns)
-        r.Log.Infof("连接RabbitMQ   %s: %s ----  成功", dnsName, l.Dns)
+        r.Log.Debugf("连接RabbitMQ   %s: %s ----  成功", dnsName, l.Dns)
         if err != nil {
             return  nil, ecode.RabbitMQDnsConnErr.Error(l.Dns, err.Error())
         }
@@ -41,6 +41,10 @@ func (r *rabbitMQ)conn(dnsName string) (*amqp.Connection, error) {
     }
     return nil, ecode.RabbitMQNotDnsConf.Error(dnsName)
 }
+func (r *rabbitMQ)Get(dnsName string, exchangeName string) (*Channel, error){
+    return r.Exchange(dnsName, exchangeName)
+}
+
 func (r *rabbitMQ)GetConn(dnsName string) (*amqp.Connection, error){
     var (
         err error
@@ -98,6 +102,7 @@ func (r *rabbitMQ)Close() {
     r.Pool.Range(func(k, v interface{}) bool {
         if conn, ok := v.(*amqp.Connection); ok {
             conn.Close()
+            r.Log.Debugf("关闭rabbitMQ - 【%s】 的链接", r.Conf[k.(string)].Dns)
         }
         return true
     })
@@ -137,7 +142,7 @@ type Channel struct {
 }
 func (c *Channel)Close(){
     c.Channel.Close()
-    RabbitMq.Log.Infof("关闭RabbitMQ-Channel - %s 的链接", c.Dns)
+    RabbitMq.Log.Debugf("关闭RabbitMQ-Channel - %s 的链接", c.Dns)
 }
 func (c *Channel)ReConn() error{
     newCh, err := RabbitMq.Exchange(c.Dns, c.Exchange)
@@ -170,7 +175,7 @@ func (c *Channel)PublishMore(routing string, mandatory bool, immediate bool, dat
         if err == nil {
             break
         } else {
-            RabbitMq.Log.Infof("错误 ----> %s", err.Error())
+            RabbitMq.Log.Errorf("错误 ----> %s", err.Error())
             time.Sleep(time.Microsecond * 500 * time.Duration(i))
             c.ReConn()
         }

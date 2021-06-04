@@ -64,4 +64,7 @@ var DefaultConf = Config{
         Name:    "Gobreaker-client",
         Timeout: 30 * time.Second,
     },
+    // 缓存redis 别名
+    CacheRedis: "",
+    CacheSec:   600,
 }

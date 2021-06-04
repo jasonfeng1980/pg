@@ -3,6 +3,7 @@ package service
 import (
     "context"
     "github.com/jasonfeng1980/pg/util"
+    "net/http"
     "time"
 
     "github.com/go-kit/kit/log"
@@ -23,8 +24,13 @@ type loggingMiddleware struct {
     next   Service
 }
 func (mw loggingMiddleware) Call(ctx context.Context, dns string, jsonParams map[string]interface{}) (data interface{}, code int64, msg string){
+    var logArgs  []interface{}
+    if dns[0:4] == "http" {
+        logArgs = append(logArgs, "ip",  jsonParams[RequestHandle].(*http.Request).RemoteAddr)
+    }
     defer func(begin time.Time) {
-        mw.logger.Log("dns", dns, "time", time.Since(begin))
+        logArgs = append(logArgs, "dns", dns, "use", time.Since(begin), "params", jsonParams)
+        mw.logger.Log(logArgs...)
     }(time.Now())
     return mw.next.Call(ctx, dns, jsonParams)
 }

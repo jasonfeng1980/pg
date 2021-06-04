@@ -116,7 +116,7 @@ func (c *Client)getSvcFromEtcd(serverName string, scheme string) callendpoint.Se
         panic(ecode.EtcdDisconnect.Error(c.Conf.EtcdAddr, err.Error()))
     }
 
-    instancer, e := etcdv3.NewInstancer(client, prefix, logEtcd)
+    instancer, e := etcdv3.NewInstancer(client, prefix, util.LogNothing())
     if e != nil {
         logEtcd.With( "server", prefix).Error(err.Error())
         panic(ecode.NoMicroServer.Error(prefix, err.Error()))

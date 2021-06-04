@@ -14,6 +14,8 @@ import (
     "github.com/jasonfeng1980/pg/mq/rabbitmq"
     "github.com/jasonfeng1980/pg/util"
     "github.com/sony/gobreaker"
+    "net/http"
+    "os"
     "time"
 )
 
@@ -24,7 +26,7 @@ func Server(root ...string) *micro.Server {
         Conf:   conf.Get(),
     }
     if len(root) == 1 {
-        ret.Conf.ServerRoot = root[0]
+        ret.Conf.ServerRoot = util.FileRealPath(root[0])
     }
     return ret
 }
@@ -79,8 +81,20 @@ func Err(e error) (interface{}, int64, string) {
 func ErrCode(code int64, msg string)(interface{}, int64, string) {
     return nil, code, msg
 }
-// 调试输出
-func D(kvs ...interface{}){
-    util.Log.With(kvs...).Debug()
+// 调试输出， 需开启debug模式
+func D(l ...interface{}){
+    for _, v:=range l{
+        util.Log.LogPretty(v, 3)
+    }
 }
-
+// 调试输出 并退出
+func DD(l ...interface{}) {
+    D(l...)
+    os.Exit(1)
+}
+// 获取HTTP请求的的Request句柄
+func Request(ctx context.Context) (r *http.Request, ok bool){
+    ret := ctx.Value(service.RequestHandle)
+    r, ok = ret.(*http.Request)
+    return
+}

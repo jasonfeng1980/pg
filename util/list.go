@@ -27,3 +27,41 @@ func ListTrim(l []string, cutset string) (ret []string){
     }
     return
 }
+
+// 判断值 是否在list里
+func ListHave(l interface{}, need interface{}) bool {
+    switch key := need.(type) {
+    case int:
+        for _, v := range l.([]int) {
+            if v == key {
+                return true
+            }
+        }
+    case string:
+        for _, v := range l.([]string) {
+            if v == key {
+                return true
+            }
+        }
+    case int64:
+        for _, v := range l.([]int64) {
+            if v == key {
+                return true
+            }
+        }
+    case float64:
+        for _, v := range l.([]float64) {
+            if v == key {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+func ListInterfaceToStr(l []interface{}) (ret []string){
+    for _, v:=range l {
+        ret = append(ret, StrParse(v))
+    }
+    return
+}

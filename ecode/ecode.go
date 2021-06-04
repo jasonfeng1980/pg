@@ -51,12 +51,6 @@ var (
     NoMicroServer = Err(1010, "没有名称为【%s】的微服务，错误为%s")
     EtcdDisconnect = Err(1011, "无法连接链接为【%s】的ETCD服务器.错误为%s")
 
-    ConfNotComplete = Err(1012, "【%s】的配置文件不完整")
-    ConfMissWrite = Err(1013, "【%s】缺少写库配置")
-    ConfWrong = Err(1013, "【%s】配置不正确")
-
-
-
     // 浏览器请求   [1100,1200)
     HttpMissDns = Err(1100, "缺少DNS")
     HttpCannotMatchDns = Err(1101, "没有无法匹配的DNS:%s/%s/%s")
@@ -71,6 +65,7 @@ var (
     DbColumnsNotMatch = Err(1204, "columns与地址不匹配")
     DbWrongMap = Err(1205, "错误的MAP格式，必须是 map[string]interface")
     DbWrongWhere = Err(1206, "错误的where格式，必须是 string 或者 map[string]interface")
+    DbWrongConfName = Err(1207, "%s 没有 别名%s 的配置")
 
     MdbWrongData= Err(1210, "Mongo创建连接失败: %s")
     MdbCloseConnErr = Err(1211, "Mongo关闭连接失败: %s")
@@ -95,6 +90,9 @@ var (
     ConfYamlWrongMongo = Err(1303, "Mongo-yaml配置格式不正确")
     ConfYamlWrongRedis = Err(1304, "Redis-yaml配置格式不正确")
     ConfYamlWrongRabbitMQ = Err(1305, "RabbitMQ-yaml配置格式不正确")
+    ConfNotComplete = Err(1306, "【%s】的配置文件不完整")
+    ConfMissWrite = Err(1307, "【%s】缺少写库配置")
+    ConfWrong = Err(1308, "【%s】配置不正确")
 
     // RabbitMQ [1400, 1500)
     RabbitMQDnsConnErr = Err(1301, "rabbit DNS%s链接失败,%s")

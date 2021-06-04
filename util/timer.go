@@ -9,9 +9,13 @@ var (
     TimeFormatOption = "2006-01-02 15:04:05"
 )
 
-// 当前时间
+// 当前本地时间
 func TimeNow() time.Time{
     return time.Now().In(TimeLocation)
+}
+// 当前本地时间字符串
+func TimeNowString() string{
+    return time.Now().In(TimeLocation).Format(TimeFormatOption)
 }
 
 // 变成字符串

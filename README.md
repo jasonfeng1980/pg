@@ -2,6 +2,7 @@
 方便PHPer 快速使用GO  
 只需要简单配置，就可以实现路由、日志、熔断、限流、链路追踪、连接池  
 同时支持WEB服务和内部微服务（HTTP,HTTPS,GRPC)  
+
 ### 推荐目录结构
 ```text
 ├── README.md
@@ -24,10 +25,10 @@
 ├── go.mod
 ├── go.sum
 ├── log                             # 日志目录
-│   ├── PG11.DEBUG.210126
-│   ├── PG11.ERROR.210126
-│   ├── PG11.ETCD.210126
-│   └── PG11.INFO.210126
+│   ├── PG11.DEBUG.200904
+│   ├── PG11.ERROR.200904
+│   ├── PG11.ETCD.200904
+│   └── PG11.INFO.200904
 ├── orm                             # 生成的ORM目录 全局
 │   └── demo
 │       ├── company.go
@@ -42,41 +43,25 @@
 ```
 ### 快速启用服务
 ```go
-pg.SetRoot("../../")
-svc := pg.Server()
+svc := pg.Server("../"")
 svc.Run()
 ```
 ### 调用服务API
 svc := pg.Client()  
-data, code, msg := svc.Call(dns, pg.H{})  
+data, code, msg := svc.Call(ctx, dns, pg.H{})  
 dns  服务类型://服务名称/module/version/action
 ```go
-func main(){
-    pg.SetRoot("../../")
-    util.CmdWait("请输入请求方式", waitFunc)
-}
-
-func waitFunc(cmdString string) (string, bool){
-    cmdString = strings.ToLower(cmdString)
-    svc := pg.Client()
-    defer svc.Close()
-    switch cmdString {
-    case "http", "grpc":
-        // dns  服务类型://服务名称/module/version/action
-        dns := cmdString + "://PG/request/v1/post"
-        data, code, msg := svc.Call(dns, pg.H{
-            "aa": 1,
-            "bb": cmdString,
-        })
-        fmt.Println(data, code, msg)
-        return "请输入请求方式", true
-    case "exit":
-        return "", false
-    default:
-        return "请输入正确的参数：http | grpc | exit", true
-    }
-}
+svc := pg.Client()
+defer svc.Close()
+# dns  服务类型://服务名称/module/version/action
+dns := cmdString + "://PG/auth/v1/login"
+data, code, msg := svc.Call(context.Background(), dns, pg.M{
+    "user_mobile": "186",
+    "user_password": 11111,
+})
+util.Log.Infoln(data, code, msg)
 ```
+
 ### 请求的API
 ```go
 api := pg.MicroApi()
@@ -88,14 +73,17 @@ func ORMPage(ctx context.Context, params map[string]interface{})(interface{}, in
 	return pg.Success(ret)
 }
 ```
+
 ### 加载API项目  
 ```go
 // 启动服务时
 import (
     "github.com/jasonfeng1980/pg"
-    _ "test/apps/demo"
+    _ "github.com/jasonfeng1980/pg/example/api"
 )
 ```
+_ "github.com/jasonfeng1980/pg/example/api"  是 api所在的包
+
 ### 全局MYSQL配置
 ```yaml
 # 别名
@@ -109,8 +97,23 @@ TEST:
   # 没有读库配置，就取写库的DNS
 ```
 
+### 全局MONGO配置
+```yaml
+# 别名
+USER:
+  # DNS
+  Dns: "mongodb://admin:root@localhost:27017"
+  # 超时时间
+  Timeout: 3
+  # 数据库名
+  Database: user
+  # 是否允许使用Disk
+  AllowDiskUse: 0
+
+```
+
 ### 全局REDIS配置
-```yamlll
+```yaml
 # 别名
 DEMO:
   RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
@@ -127,9 +130,28 @@ DEMO:
   WriteTimeout: 2       # 写超时时间 单位秒
 ```
 
+### 全局RabbitMQ配置
+```yaml
+USER:
+  Dns:  "amqp://guest:guest@localhost:5672//test"
+  Exchange:
+    logs:
+      Kind:   direct          # type fanout|direct|topic, durable
+      Info:   [true, false, false, false] # durable, auto-deleted, internal, no-wait
+      Args:     # x-expires, x-max-length, x-max-length-bytes, x-message-ttl, x-max-priority, x-queue-mode, x-queue-master-locator
+        x-expires: 300
+      Query:
+        q_log:                    # name
+          Routing: [q_log_q1, q_log_q2]        # 路由KEY
+          Info:   [true, false, false, false]       # durable 持久化, autoDelete 自动删除, exclusive 排他, NoWait 不需要服务器的任何返回
+          Delay:  [2, 5, 10, 100, 600, 1800, 3600, 86400] # 延时多少秒再次到队列里执行
+          Qos:    [1, 0, 0]        # count, size, global
+
+```
+
 ### 微服务配置
 ```yaml
-ServerName: PG                   # 服务名称
+ServerName: PG       # 服务名称
 ServerNo:   11       # 服务序号
 
 # 日志配置
@@ -160,6 +182,10 @@ EtcdRetryTimeout: 30   # 重试超时时间 单位秒
 # 链路跟踪配置
 ZipkinUrl:  http://localhost:9411/api/v2/spans  # zipkin地址
 
+# 缓存redis别名
+CacheRedis:   DEMO,
+CacheSec:     600,
+
 # 限流，熔断无需配置，取默认的
 
 # MYSQL 取全局库的别名
@@ -171,33 +197,31 @@ MySQL:
 Redis:
   - DEMO
 ```
+
 ### 使用YAML配置，启动服务
 ```go
 package main
 
 import (
-    "fmt"
     "github.com/jasonfeng1980/pg"
-    "os"
-    _ "test/apps/demo"
+    _ "github.com/jasonfeng1980/pg/example/api"
 )
 
 func main(){
-    root := "../../"
-    mysqlFile := root + "conf/mysql.yaml"
-    redisFile := root + "conf/redis.yaml"
-    serverFile := root + "conf/demo/pg_11_dev.yaml"
-
-    err := pg.SetConfYaml(mysqlFile, redisFile, serverFile, root)
-    if err != nil {
-        fmt.Println(err)
-        os.Exit(1)
-    }
+    root := "../"
+    pg.YamlRead(root).
+        Server("example/conf/demo/pg_11_dev.yaml").
+        Mysql("example/conf/mysql.yaml").
+        Mongo("example/conf/mongo.yaml").
+        Redis("example/conf/redis.yaml").
+        Rabbitmq("example/conf/rabbitmq.yaml").
+        Set()
 
     svc := pg.Server()
     svc.Run()
 }
 ```
+
 ### 带错误码的error
 ```go
 // 在ecode里添加一个错误
@@ -211,8 +235,13 @@ err := ecode.MYSQLNoHandle.Error("DEMO")
 // 可以将err解析成 code msg  返回 200001， "无法获得配置名为【%s】的MYSQL句柄"
 code, msg := pg.ReadError(err)
 ```
+
 ### mysql操作
 ```go
+db, err := pg.MySQL.Get("DEMO")
+if err != nil {
+    return pg.Err(err)
+}
 // 直接使用sql - 不推荐
 ret, err := db.Query("select * from company limit 2").Array()
 // 推荐方式
@@ -220,6 +249,7 @@ ret, err := db.Select("*").
     From("company").
     Where("company_id <?", 200).
     Where("company_money>=? or company_money<?", 100, 500).
+    Where(pg.M{"company_money":222}).
     GroupBy("company_money").
     Having("company_id >?", 1).
     OrderBy("company_money desc").
@@ -260,6 +290,7 @@ ret, err := tx.Select("*").
 tx.Commit()     // 提交
 tx.Rollback()   // 回滚
 ```
+
 ### ORM操作
 ```go
 import orm_demo "test/orm/demo"
@@ -292,9 +323,47 @@ ret, _:= orm.Flow(5, "company_id>?", params["company_id"]).
   Query().
   Array()
 ```
-### REDIS-直接操作
+
+### MONGO操作
 ```go
-rdb := pg.Redis.Client("demo")
+mdb, err := pg.Mongo.Get("USER")
+if err != nil {
+    return pg.ErrCode(15003, "提供的mongoDB配置不存在")
+}
+ret, err := mdb.Select("create_at, info").
+  From("user").
+  Where("info.name", pg.M{"$lte":"王二"}).
+  OrderBy("create_at desc").
+  Limit(1, 2).
+  Query().
+  Array()
+```
+
+### RabbitMQ操作
+```go
+ch, _ := pg.RabbitMQ.Get("USER", "logs")
+defer ch.Close()
+routing := "q_log_q1"
+data, _ := util.JsonEncode(params)
+// 正常发布
+ch.Publish(routing, data)
+// 延迟发布
+ch.PublishDelay(routing, data, 10)
+// 消费
+msg, _ := ch.Consume("q_log")  # 队列别名
+for d := range msg{
+    d.Ack(false)
+    util.Log.Infoln(string(d.Body[:]))
+}
+```
+
+### REDIS-直接操作
+pg.Redis.Client("DEMO")
+  - CLIENT 普通客户端
+  - SENTINEL 哨兵
+  - CLUSTER 集群
+```go
+rdb, _ := pg.Redis.Client("DEMO")
 rdb.TTL(ctx, nameKey)
 rdb.Get(ctx, name1).Val()
 rdb.RPush(ctx, nameList, "a", "b"）
@@ -303,9 +372,21 @@ rdb.SUnion(ctx, name1, name2)
 rdb.ZAdd(ctx, name1,
         &redis.Z{1, "a"},
         &redis.Z{2, "b"})
-
 ```
 
+### LOG-日志
+读取系统配置的
+  - LogDir:   ""          # 日志文件夹 info.年月日.log  error.201012.log
+  - LogDebug: true        # 是否记录测试日志
+pg.D(v ...interface{})  
+  - 日志级别 DEBUG
+  - 会显示文件，行号
+```go
+// 记录DEBUG日志
+pg.D("a", "b", "c")  
+// 记录DEBUG日志并退出
+pg.DD("a")    
+```
 
 
 

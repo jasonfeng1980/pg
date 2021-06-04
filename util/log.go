@@ -4,13 +4,14 @@ import (
     "github.com/lestrrat-go/file-rotatelogs"
     "github.com/rifflock/lfshook"
     "github.com/sirupsen/logrus"
+    "runtime"
     "sync"
 )
 
 var (
     Log     = &log{
         Dir:"",
-        Debug: true,
+        ShowDebug: true,
         Logger: &Logger{
             "",
             logrus.New(),
@@ -18,23 +19,26 @@ var (
     }
     logPool = &logPools{}
 )
+func init(){
+    Log.Level = logrus.DebugLevel
+}
 
-func LogInt(dir string, showDebug bool, serverName string) {
+func LogInit(dir string, showDebug bool, serverName string) {
     Log = &log{
         Dir: dir,
-        Debug: showDebug,
+        ShowDebug: showDebug,
     }
     logDefault := Log.Get(serverName)
     Log = &log{
         Dir: "",
-        Debug: true,
+        ShowDebug: true,
         Logger: logDefault,
     }
 }
 
 type log struct {
     Dir     string
-    Debug   bool
+    ShowDebug   bool
     *Logger
 }
 // 创建新的日志文件
@@ -44,18 +48,22 @@ func (l *log)New(name string) (*Logger, error){
         logrus.New(),
     }
 
-
     // 测试模式 显示行号
-    newLog.ReportCaller = l.Debug
+    //newLog.ReportCaller = false
     // 非测试模式， 显示error及以上的错误
-    if l.Debug {
-        newLog.Level = logrus.InfoLevel
-    } else {
+    if l.ShowDebug {
         newLog.Level = logrus.TraceLevel
+    } else {
+        newLog.Level = logrus.InfoLevel
     }
-    logFormat := &logrus.JSONFormatter{
-        PrettyPrint:     l.Debug,                 //格式化
-        TimestampFormat: "06-01-02 15:04:05", // 时间格式
+    //logFormat := &logrus.JSONFormatter{
+    //    PrettyPrint:     l.ShowDebug,         // 格式化
+    //    TimestampFormat: "06-01-02 15:04:05", // 时间格式
+    //    DisableHTMLEscape: true,              // 不转义HTML特殊字符
+    //}
+    logFormat := &logrus.TextFormatter{
+        FullTimestamp: true,
+        TimestampFormat: "2006-01-02 15:04:05", // 时间格式
     }
     if l.Dir != ""  {
         newLog.Out = &nullWrite{}
@@ -116,7 +124,20 @@ type Logger struct {
     name string
     *logrus.Logger
 }
-func (l Logger)Log(kvs ...interface{}) error{
+func (l *Logger)ShowLine(skip int) *logrus.Entry{
+    _, file, line, _ := runtime.Caller(skip)
+    return l.With("LOG_FILE", file + ":" + StrParse(line))
+}
+func (l *Logger)LogPretty(v interface{}, callerSkip int) {
+    s, err := JsonIndent(v)
+    if err != nil {
+        l.Debugln(err)
+    }
+
+    l.ShowLine(callerSkip).Debugln(s)
+}
+
+func (l *Logger)Log(kvs ...interface{}) error{
     l.With(kvs...).Info()
     return nil
 }
@@ -151,3 +172,9 @@ func (p *logPools)Get(name string) (ret *Logger) {
     p.rwLock.RUnlock()
     return
 }
+
+func LogNothing() logNothing{
+    return logNothing{}
+}
+type logNothing struct {}
+func (logNothing) Log(...interface{}) error { return nil}

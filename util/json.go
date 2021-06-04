@@ -1,6 +1,7 @@
 package util
 
 import (
+    "encoding/json"
     "github.com/jasonfeng1980/pg/ecode"
     jsoniter "github.com/json-iterator/go"
 )
@@ -23,6 +24,13 @@ func JsonDecode(data interface{}, v interface{}) error{
         return ecode.UtilErrDecodeJson.Error()
     }
     return Json.Unmarshal(b, v)
+}
+func JsonIndent(v interface{}) (string, error){
+    r, err := json.MarshalIndent(v, "", "\t")
+    if err != nil {
+        return "", err
+    }
+    return string(r[:]), nil
 }
 
 // json_string => map
