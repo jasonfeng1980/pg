@@ -76,7 +76,8 @@ func (y *YamlConf)Server(filePath string) *YamlConf{
             y.ServerConf.LogDir = y.ServerConf.ServerRoot + "/" + y.ServerConf.LogDir
         }
     }
-    util.LogInit(y.ServerConf.LogDir, y.ServerConf.LogShowDebug, y.ServerConf.ServerName)
+    util.LogInit(y.ServerConf.LogDir, y.ServerConf.LogShowDebug, y.ServerConf.ServerName,
+        y.ServerConf.ServerNo)
 
     return y
 }

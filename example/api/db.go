@@ -38,6 +38,8 @@ func dbMysql(ctx context.Context, params map[string]interface{})(interface{}, in
         return pg.Err(err)
     }
     pg.D(ret)
+    myLog := pg.Log.Get("login")
+    myLog.With("userId", 8888, "userName", "张三丰").Infoln("登录成功")
     return pg.Suc(ret)
 }
 func dbMongo(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {

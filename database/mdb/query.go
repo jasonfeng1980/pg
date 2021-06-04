@@ -2,7 +2,6 @@ package mdb
 
 import (
     "context"
-    "fmt"
     "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/database/rdb"
     "github.com/jasonfeng1980/pg/ecode"
@@ -258,9 +257,9 @@ func (q *Query)Delete() *Query{
 
 // 将mongo命令整理成sql语句
 func (q *Query)buildSql() (retSql string, args []interface{}){// @todo
-    for k, v := range q.options.where {
-        fmt.Println(k, v)
-    }
+    //for k, v := range q.options.where {
+    //    fmt.Println(k, v)
+    //}
     return
 }
 // 统计配置

@@ -1,7 +1,7 @@
 # pg
-方便PHPer 快速使用GO  
-只需要简单配置，就可以实现路由、日志、熔断、限流、链路追踪、连接池  
-同时支持WEB服务和内部微服务（HTTP,HTTPS,GRPC)  
+方便PHPer 快速使用GO 搭建微服务平台
+只需要简单配置，就可以实现路由、日志、熔断、限流、链路追踪、连接池
+简化了MYSQL,MONGO,RabbitMQ,REDIS的API, 只需熟悉SQL语句，就可以使用这些搭建系统
 
 ### 推荐目录结构
 ```text
@@ -25,10 +25,8 @@
 ├── go.mod
 ├── go.sum
 ├── log                             # 日志目录
-│   ├── PG11.DEBUG.200904
-│   ├── PG11.ERROR.200904
-│   ├── PG11.ETCD.200904
-│   └── PG11.INFO.200904
+│   ├── PG11.login.210601             # 服务名  服务编号 . 用户指定名称|默认日志级别 . 年月日
+│   └── PG11.access.210601
 ├── orm                             # 生成的ORM目录 全局
 │   └── demo
 │       ├── company.go
@@ -49,12 +47,12 @@ svc.Run()
 ### 调用服务API
 svc := pg.Client()  
 data, code, msg := svc.Call(ctx, dns, pg.H{})  
-dns  服务类型://服务名称/module/version/action
+dns  [grpc|http]://服务名称/module/version/action
 ```go
 svc := pg.Client()
 defer svc.Close()
-# dns  服务类型://服务名称/module/version/action
-dns := cmdString + "://PG/auth/v1/login"
+# dns  grpc://服务名称/module/version/action
+dns :=  "http://PG/auth/v1/login"
 data, code, msg := svc.Call(context.Background(), dns, pg.M{
     "user_mobile": "186",
     "user_password": 11111,
@@ -191,11 +189,19 @@ CacheSec:     600,
 # MYSQL 取全局库的别名
 MySQL:
   - DEMO
-  - TEST
+
+# Mongo 取全局库的别名
+Mongo:
+  - USER
 
 # REDIS 取全局库的别名
 Redis:
   - DEMO
+
+# Rabbitmq 取全局库的别名
+RabbitMQ:
+  - USER
+
 ```
 
 ### 使用YAML配置，启动服务
@@ -376,8 +382,12 @@ rdb.ZAdd(ctx, name1,
 
 ### LOG-日志
 读取系统配置的
-  - LogDir:   ""          # 日志文件夹 info.年月日.log  error.201012.log
-  - LogDebug: true        # 是否记录测试日志
+  - LogDir:   ""          日志文件夹 info.年月日.log  error.201012.log
+  - LogDebug: true        是否记录测试日志
+日志级别 
+  - 默认是  Info
+  - 如果 LogDebug == true 日志是 Trace级别
+
 pg.D(v ...interface{})  
   - 日志级别 DEBUG
   - 会显示文件，行号
@@ -385,7 +395,12 @@ pg.D(v ...interface{})
 // 记录DEBUG日志
 pg.D("a", "b", "c")  
 // 记录DEBUG日志并退出
-pg.DD("a")    
+pg.DD("a")  
+
+// 获取句柄
+myLog := pg.Log.Get("login")        # 如果配置LogDir!= "", 会生成新的日志文件
+myLog.With("userId", 8888, "userName", "张三丰").    # With(kvs  ...interface{})
+      Info("登录成功")             # 支持Trace|Debug|Info|Warn|Error|Fatal|Panic 
 ```
 
 

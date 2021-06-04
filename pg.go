@@ -65,7 +65,7 @@ var (
     RabbitMQ = rabbitmq.RabbitMq
     Filter = &db.Filter{}
     YamlRead = conf.ConfInit
-    Log = util.Log
+    Log = &util.Log
 
 )
 type M map[string]interface{}

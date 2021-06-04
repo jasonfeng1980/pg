@@ -9,7 +9,7 @@ import (
 )
 
 var (
-    Log     = &log{
+    Log     = log{
         Dir:"",
         ShowDebug: true,
         Logger: &Logger{
@@ -17,28 +17,34 @@ var (
             logrus.New(),
         },
     }
-    logPool = &logPools{}
+    logPool = &logPools{
+        Pools: make(map[string]*Logger),
+    }
 )
 func init(){
     Log.Level = logrus.DebugLevel
 }
 
-func LogInit(dir string, showDebug bool, serverName string) {
-    Log = &log{
+func LogInit(dir string, showDebug bool, serverName string, serverNo string) {
+    Log = log{
         Dir: dir,
         ShowDebug: showDebug,
+        PreName: serverName + serverNo,
     }
-    logDefault := Log.Get(serverName)
-    Log = &log{
-        Dir: "",
-        ShowDebug: true,
-        Logger: logDefault,
-    }
+    Log.Logger= Log.Get("")
+    //
+    //Log = &log{
+    //    Dir: "",
+    //    ShowDebug: true,
+    //    Logger: logDefault,
+    //    PreName: serverName + serverNo,
+    //}
 }
 
 type log struct {
     Dir     string
     ShowDebug   bool
+    PreName string
     *Logger
 }
 // 创建新的日志文件
@@ -54,7 +60,7 @@ func (l *log)New(name string) (*Logger, error){
     if l.ShowDebug {
         newLog.Level = logrus.TraceLevel
     } else {
-        newLog.Level = logrus.InfoLevel
+        newLog.Level = logrus.TraceLevel
     }
     //logFormat := &logrus.JSONFormatter{
     //    PrettyPrint:     l.ShowDebug,         // 格式化
@@ -74,7 +80,7 @@ func (l *log)New(name string) (*Logger, error){
     return newLog, nil
 }
 func (l *log)Get(name string) *Logger{
-    return logPool.Get(name)
+    return logPool.Get( name)
 }
 
 type nullWrite struct {}
@@ -102,9 +108,12 @@ func (l *log)newLfsHook(name string, logFormat logrus.Formatter) logrus.Hook {
     return lfsHook
 }
 func (l *log)logWriter(name, env string) *rotatelogs.RotateLogs {
+    if name != "" {
+        env = name
+    }
     writer, err := rotatelogs.New(
         // 日志文件
-        l.Dir + "/" + name + "." + env  + ".%Y%m%d",
+        l.Dir + "/" + l.PreName + "." + env  + ".%y%m%d",
 
         // 日志周期(默认每86400秒/一天旋转一次)
         rotatelogs.WithRotationTime(86400),
@@ -129,11 +138,14 @@ func (l *Logger)ShowLine(skip int) *logrus.Entry{
     return l.With("LOG_FILE", file + ":" + StrParse(line))
 }
 func (l *Logger)LogPretty(v interface{}, callerSkip int) {
+    if Log.Dir != "" {
+        l.ShowLine(callerSkip).Debugln(v)
+        return
+    }
     s, err := JsonIndent(v)
     if err != nil {
         l.Debugln(err)
     }
-
     l.ShowLine(callerSkip).Debugln(s)
 }
 
@@ -157,20 +169,27 @@ type logPools struct {
     rwLock sync.RWMutex
     Pools map[string]*Logger
 }
-
+func (p *logPools)makeKey(name string) string{
+    return Log.PreName + "." + name
+}
 func (p *logPools)Add(l *Logger){
     p.rwLock.Lock()
-    p.Pools[l.name] = l
+    key := p.makeKey(l.name)
+    p.Pools[key] = l
     p.rwLock.Unlock()
 }
-func (p *logPools)Get(name string) (ret *Logger) {
-    var ok bool
+func (p *logPools)Get(name string) *Logger {
+    key := p.makeKey(name)
     p.rwLock.RLock()
-    if ret, ok = p.Pools[name]; !ok{
-        ret, _ = Log.New(name)
-    }
+    ret, ok := p.Pools[key]
     p.rwLock.RUnlock()
-    return
+    if !ok{
+        var err error
+        if ret, err = Log.New(name); err ==nil {
+            p.Add(ret)
+        }
+    }
+    return ret
 }
 
 func LogNothing() logNothing{

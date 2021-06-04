@@ -2,7 +2,7 @@ ServerName: PG          # 服务名称
 ServerNo:   11          # 服务序号
 
 # 日志配置
-LogDir:       ""      # 日志文件夹 info.年月日.log | error.201012.log
+LogDir:               # 日志文件夹 info.年月日.log | error.201012.log
 LogDebug: true        # 是否记录测试日志
 
 # 网站配置
@@ -35,7 +35,7 @@ CacheSec:     10
 
 # 限流，熔断无需配置，取默认的
 
-# MYSQL 取全局库的别名 + 权限  e.g.
+# MYSQL 取全局库的别名
 MySQL:
   - DEMO
 
