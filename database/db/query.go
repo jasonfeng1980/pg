@@ -171,6 +171,7 @@ func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
 
 func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w string, argV []interface{}){
     midStr := "="
+    key  = fmt.Sprintf("%s%s? ", key, midStr)
     if len(args) == 1 {
         h := reflect.ValueOf(args[0])
         if h.Kind() == reflect.Map {// 如果是map
@@ -199,9 +200,9 @@ func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w stri
                 key = fmt.Sprintf("%s %s (%s)", key, midStr, strings.Join(wArg, ","))
             }
         }
-    } else {
+    }
+    if len(argV) == 0 {
         argV = args
-        key  = fmt.Sprintf("%s%s? ", key, midStr)
     }
 
     if base == "" {

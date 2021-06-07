@@ -95,7 +95,7 @@ func (s *Server) Script(f ScriptFunc){
     // 开始执行脚本方法
     initScriptFunc(&g, f)
 
-    util.Log.Debugf("exit", g.Run())
+    util.Log.Debugln("exit", g.Run())
 
 }
 func initScriptFunc(g *group.Group, f ScriptFunc) {

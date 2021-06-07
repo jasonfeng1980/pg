@@ -40,34 +40,29 @@ type Stream struct{
     Key
 }
 
-func (h *Hash)Encode(arg interface{}) (interface{}, error){
+func (h *Hash)Encode(arg map[string]interface{}) (string, error){
     if len(h.JoinMode) == 0 { // 不需要JOIN 就直接返回
-        return arg.(string), nil
+        r, err := util.JsonEncode(arg)
+        return string(r[:]), err
     }
-    switch arg.(type) {
-    case map[string]interface{}, map[string]int, map[string]string, map[string]bool, map[string]int64, map[string]int32, map[string]float32, map[string]float64:
-        var ret  []string
-        argMap := arg.(map[string]interface{})
-        var newStr string
-        for _, k := range h.JoinMode {
-            if v, ok := argMap[k];ok{
-                if s, err := util.Str(v); err!=nil {
-                    return "", ecode.RdbCannotToString.Error(h.Name, k)
-                } else {
-                    newStr = s
-                }
-            } else {
-                newStr = ""
-            }
-            ret = append(ret, strings.ReplaceAll(newStr, "〡", "|" ))
+    var ret  []string
+    var newStr string
+    for _, k := range h.JoinMode {
+        if v, ok := arg[k];ok{
+            newStr = util.StrParse(v)
+        } else {
+            newStr = ""
         }
-        return strings.Join(ret, "〡"), nil
-    default:
-        return "", ecode.RdbWrongData.Error(h.Name)
+        ret = append(ret, strings.ReplaceAll(newStr, "〡", "|" ))
     }
+    return strings.Join(ret, "〡"), nil
 }
 
 func (h *Hash)Decode(arg string) (ret map[string]string, err error) {
+    if len(h.JoinMode) == 0 { // 不需要JOIN 就直接json_decode
+        err = util.JsonDecode(arg, ret)
+        return
+    }
     arr := strings.Split(arg, "〡")
     if len(arr) != len(h.JoinMode) {
         return nil, ecode.RdbWrongDecodeJoin.Error()
@@ -197,8 +192,16 @@ func (h *Hash) HExists(field string) (bool, error){
     return h.Client.HExists(h.CTX, h.Name, field).Result()
 }
 // 获取存储在哈希表中指定字段的值。
-func (h *Hash) HGet(field string) (string ,error){
-    return h.Client.HGet(h.CTX, h.Name, field).Result()
+func (h *Hash) HGet(field ...string) (string ,error){
+    var (
+        f string
+    )
+    if len(field)==1{
+        f = field[0]
+    } else {
+        f = h.Field
+    }
+    return h.Client.HGet(h.CTX, h.Name, f).Result()
 }
 // 获取存储在哈希表中指定字段的值。 - 指定Field
 func (h *Hash) HGetField() (string ,error){
@@ -236,8 +239,20 @@ func (h *Hash) HMGet(fields ...string) ([]interface{}, error){
 // value 支持一下的形式:
 //   - string
 //   - map[string]interface{}
-func (h *Hash) HSet(field, value interface{}) (int64 ,error){
-    return h.Client.HSet(h.CTX, h.Name, field, value).Result()
+func (h *Hash) HSet(value ...interface{}) (int64 ,error){
+    var (
+    	field interface{}
+        v interface{}
+    )
+
+    if len(value)==1{
+        field = h.Field
+        v = value[0]
+    } else {
+        field = value[0]
+        v = value[1]
+    }
+    return h.Client.HSet(h.CTX, h.Name, field, v).Result()
 }
 // 将哈希表 key 中的 多对 字段 field 的值设为 value - 指定filed
 func (h *Hash) HSetField(value interface{}) (int64 ,error){

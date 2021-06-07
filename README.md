@@ -5,7 +5,7 @@
 
 ### 推荐目录结构
 ```text
-├── README.md
+┌── README.md
 ├── apps                            # 服务目录
 │   └── demo                          # 示例：一个服务文件夹
 │       ├── usesr.go
@@ -189,6 +189,7 @@ CacheSec:     600,
 # MYSQL 取全局库的别名
 MySQL:
   - DEMO
+  - TEST
 
 # Mongo 取全局库的别名
 Mongo:
@@ -228,6 +229,22 @@ func main(){
 }
 ```
 
+### 启动脚本
+```go
+func main(){
+    root := "../"
+    pg.YamlRead(root).
+        Server("example/conf/demo/pg_11_dev.yaml").
+        Set()
+    svc := pg.Server()
+    svc.Script(test)       # 满足 func() error 就可以
+}
+
+func test() error {
+    return nil
+}
+```
+
 ### 带错误码的error
 ```go
 // 在ecode里添加一个错误
@@ -253,15 +270,16 @@ ret, err := db.Query("select * from company limit 2").Array()
 // 推荐方式
 ret, err := db.Select("*").
     From("company").
-    Where("company_id <?", 200).
+    //Where("company_id <=?", 200).
+    Where(pg.M{"company_id": pg.M{"$lte": 200}}).  // 和上面效果一样
     Where("company_money>=? or company_money<?", 100, 500).
     Where(pg.M{"company_money":222}).
     GroupBy("company_money").
     Having("company_id >?", 1).
     OrderBy("company_money desc").
     Limit(3, 0).
-    Cache(true).
-    Query().
+    Cache(true). # 用redis缓存结果，读配置的CacheRedis和CacheSec
+    Query().   
     Array()
 // 更新
 updateLine, err := db.Update("company").
@@ -336,11 +354,20 @@ mdb, err := pg.Mongo.Get("USER")
 if err != nil {
     return pg.ErrCode(15003, "提供的mongoDB配置不存在")
 }
-ret, err := mdb.Select("create_at, info").
+ret, err := mdb.Select("*").
   From("user").
-  Where("info.name", pg.M{"$lte":"王二"}).
+  Where(pg.M{"info.name": pg.M{"$lte":"王二"}}).
+  //Where("info.name", pg.M{"$lte":"王二"}). // 效果同上条
+  //GroupByMap(pg.M{
+  //    "_id":"$token",
+  //    "sum": bson.D{{"$sum", "$info.sex"}},
+  //    "count": bson.D{{"$sum", 1}},
+  //}).
+  GroupBy("token").     // 等同上条的 _id, count的效果
+  //Having(pg.M{"count": pg.M{"$gte": 16}}).
+  Having("count", pg.M{"$gte": 16}). // 效果同上条
   OrderBy("create_at desc").
-  Limit(1, 2).
+  Limit(0, 20).
   Query().
   Array()
 ```
@@ -363,13 +390,14 @@ for d := range msg{
 }
 ```
 
-### REDIS-直接操作
+### REDIS-操作
 pg.Redis.Client("DEMO")
   - CLIENT 普通客户端
   - SENTINEL 哨兵
   - CLUSTER 集群
 ```go
-rdb, _ := pg.Redis.Client("DEMO")
+rClient, _ := pg.Redis.Client("DEMO")
+// 直接操作
 rdb.TTL(ctx, nameKey)
 rdb.Get(ctx, name1).Val()
 rdb.RPush(ctx, nameList, "a", "b"）
@@ -378,29 +406,57 @@ rdb.SUnion(ctx, name1, name2)
 rdb.ZAdd(ctx, name1,
         &redis.Z{1, "a"},
         &redis.Z{2, "b"})
+// 推荐操作
+  // 在配置文件里设计redis的KEY，可以防止单独文件里，统一管理
+ctx := context.Background()
+UserName := func() rdb.String{
+    return rdb.String{
+        Key: rdb.Key{
+            CTX: ctx,
+            Name: "userName",
+            Client: rClient,
+        },
+    }
+}
+UserInfo := func(userId int) rdb.Hash{
+    return rdb.Hash{
+        Key: rdb.Key{
+            CTX:    ctx,
+            Name:   "userInfo",
+            Client: rClient,
+        },
+        Field:    util.StrParse(userId),
+        JoinMode: []string{"age", "desc"},
+    }
+}
+  // 用这些KEY来操作, 可以大幅减少redis内存空间
+u := UserName()
+ui := UserInfo(888)
+u.Set("张三丰")
+    // 只取JoinMode里的key对应的值，不存储KEY
+info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息"})
+
+ui.HSet(info)
+retName, err := u.Get()
+tInfo, _ := ui.HGet()       // 18〡备注
+retInfo, _ := ui.Decode(tInfo) // map[string]string{"age": "18", "desc": "备注"}
 ```
 
 ### LOG-日志
-读取系统配置的
-  - LogDir:   ""          日志文件夹 info.年月日.log  error.201012.log
-  - LogDebug: true        是否记录测试日志
-日志级别 
-  - 默认是  Info
-  - 如果 LogDebug == true 日志是 Trace级别
-
-pg.D(v ...interface{})  
-  - 日志级别 DEBUG
-  - 会显示文件，行号
+- 日志级别默认是Info
+- 如果配置LogDebug:true,日志级别是Trace
 ```go
-// 记录DEBUG日志
+// 记录DEBUG日志 日志级别DEBUG 会显示文件，行号
 pg.D("a", "b", "c")  
 // 记录DEBUG日志并退出
 pg.DD("a")  
 
-// 获取句柄
-myLog := pg.Log.Get("login")        # 如果配置LogDir!= "", 会生成新的日志文件
-myLog.With("userId", 8888, "userName", "张三丰").    # With(kvs  ...interface{})
-      Info("登录成功")             # 支持Trace|Debug|Info|Warn|Error|Fatal|Panic 
+// 获取句柄, 如果配置LogDir!= "", 会生成新的日志文件
+myLog := pg.Log.Get("login")
+    // With(kvs  ...interface{})
+myLog.With("userId", 8888, "userName", "张三丰").
+    // 支持Trace|Debug|Info|Warn|Error|Fatal|Panic()
+      Info("登录成功") 
 ```
 
 

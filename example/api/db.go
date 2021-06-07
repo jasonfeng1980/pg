@@ -27,7 +27,8 @@ func dbMysql(ctx context.Context, params map[string]interface{})(interface{}, in
     }
     ret, err := db.Select("*").
         From("information_schema.TABLES").
-        Where("TABLE_ROWS > ?", 10).
+        //Where("TABLE_ROWS > ?", 10).
+        Where("TABLE_ROWS", pg.M{"$gte": 10}).
         Where(pg.M{"AVG_ROW_LENGTH": 0}).
         OrderBy("TABLE_ROWS  desc").
         Limit(1, 1).
@@ -47,11 +48,20 @@ func dbMongo(ctx context.Context, params map[string]interface{})(interface{}, in
     if err != nil {
         return pg.ErrCode(15003, "提供的mongoDB配置不存在")
     }
-    ret, err := mdb.Select("create_at, info").
+    ret, err := mdb.Select("*").
         From("user").
-        Where("info.name", pg.M{"$lte":"王二"}).
+        Where(pg.M{"info.name": pg.M{"$lte":"王二"}}).
+        //Where("info.name", pg.M{"$lte":"王二"}). // 效果同上
+        //GroupByMap(pg.M{
+        //    "_id":"$token",
+        //    "sum": bson.D{{"$sum", "$info.sex"}},
+        //    "count": bson.D{{"$sum", 1}},
+        //}).
+        GroupBy("token").
+        //Having(pg.M{"count": pg.M{"$gte": 16}}).
+        Having("count", pg.M{"$gte": 16}). // 效果同上
         OrderBy("create_at desc").
-        Limit(1, 2).
+        Limit(0, 20).
         Query().
         Array()
     if err != nil {
@@ -60,24 +70,45 @@ func dbMongo(ctx context.Context, params map[string]interface{})(interface{}, in
     pg.D(ret)
     return pg.Suc(ret)
 }
-func dbRedis(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {
+func dbRedis(_ context.Context, params map[string]interface{})(interface{}, int64, string) {
     rClient, err := pg.Redis.Client("DEMO")
     if err != nil {
         pg.Err(err)
     }
-    key := rdb.String{
-        Key: rdb.Key{
-            CTX: context.Background(),
-            Name: "test",
-            Client: rClient,
-        },
+    ctx := context.Background()
+    UserName := func() rdb.String{
+        return rdb.String{
+            Key: rdb.Key{
+                CTX: ctx,
+                Name: "userName",
+                Client: rClient,
+            },
+        }
     }
-    ret, err := key.Get()
-    if err != nil {
-        return pg.Err(err)
+    UserInfo := func(userId int) rdb.Hash{
+        return rdb.Hash{
+            Key: rdb.Key{
+                CTX:    ctx,
+                Name:   "userInfo",
+                Client: rClient,
+            },
+            Field:    util.StrParse(userId),
+            JoinMode: []string{"age", "desc"},
+        }
     }
-    num, _ := util.Int64Parse(ret)
-    key.Set( num + 1)
-    pg.D(ret)
-    return pg.Suc(ret)
+    // 用这些KEY来操作, 可以大幅减少redis内存空间
+    u := UserName()
+    ui := UserInfo(888)
+    u.Set("张三丰")
+        // 只取JoinMode里的key对应的值，不存储KEY
+    info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息"})
+
+    ui.HSet(info)
+    retName, err := u.Get()
+    tInfo, _ := ui.HGet()       // 18〡备注
+    retInfo, _ := ui.Decode(tInfo) // map[string]string{"age": "18", "desc": "备注"}
+    return pg.Suc(pg.M{
+        "userName": retName,
+        "userInfo":   retInfo,
+    })
 }

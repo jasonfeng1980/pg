@@ -2,6 +2,7 @@ package mdb
 
 import (
     "context"
+    "fmt"
     "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/database/rdb"
     "github.com/jasonfeng1980/pg/ecode"
@@ -135,9 +136,17 @@ func (q *Query)GroupByMap(group map[string]interface{}) *Query{
 
 func (q *Query)GroupBy(group string) *Query{
     var newW bson.M
-    if err := util.JsonDecode(group, &newW); err!=nil{
-        panic(err)
+    if strings.HasPrefix(group, "{") { // 传的是JSON
+        if err := util.JsonDecode(group, &newW); err!=nil{
+            panic(err)
+        }
+    } else { // 只是单个字段
+        newW = bson.M{
+            "_id": "$" + group,
+            "count": bson.M{"$sum": 1},
+        }
     }
+
     q.options.groupBy = newW
     return q
 }
@@ -403,6 +412,7 @@ func (q *Query)Query(args ...interface{}) (ret *Result){
             opts.SetAllowDiskUse(q.Conf.AllowDiskUse)
         }
         opts.SetMaxTime(q.Conf.Timeout)
+        fmt.Println(pipeline)
         ret.Cursor, ret.Err = collection.Aggregate(ctx, pipeline, opts)
     }
 
