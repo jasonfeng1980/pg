@@ -1,7 +1,7 @@
 # pg
-方便PHPer 快速使用GO 搭建微服务平台
-只需要简单配置，就可以实现路由、日志、熔断、限流、链路追踪、连接池
-简化了MYSQL,MONGO,RabbitMQ,REDIS的API, 只需熟悉SQL语句，就可以使用这些搭建系统
+方便PHPer 快速使用GO 搭建微服务平台<br>
+只需简单配置，就可以实现路由、日志、熔断、限流、链路追踪、连接池<br>
+简化了MYSQL,MONGO,RabbitMQ,REDIS的API, 会SQL语法，就可以使用这些搭建系统
 
 ### 推荐目录结构
 ```text
@@ -20,7 +20,9 @@
 │   │   └── pg_11_dev.yaml
 │   ├── mysql.yaml                    # 全局mysql配置
 │   └── redis.yaml                    # 全局redis配置
-├── ecode                           # 错误code
+│   └── mongo.yaml                    # 全局mongo配置
+│   └── rabbitmq.yaml                 # 全局redis配置
+├── ecode                           # 错误code目录
 │   └── ecode.go
 ├── go.mod
 ├── go.sum
@@ -45,9 +47,7 @@ svc := pg.Server("../"")
 svc.Run()
 ```
 ### 调用服务API
-svc := pg.Client()  
-data, code, msg := svc.Call(ctx, dns, pg.H{})  
-dns  [grpc|http]://服务名称/module/version/action
+dns格式      [grpc|http]://服务名称/module/version/action
 ```go
 svc := pg.Client()
 defer svc.Close()
@@ -247,7 +247,7 @@ func test() error {
 
 ### 带错误码的error
 ```go
-// 在ecode里添加一个错误
+// 在ecode文件里添加一个错误， %s可以替换为不同的字符串，同fmt.Sprintf
 MYSQLNoHandle := pg.Ecode(200001, "无法获得配置名为【%s】的MYSQL句柄")
 
 // 在API里可以直接返回 nil, 200001 "无法获得配置名为【DEMO】的MYSQL句柄"
