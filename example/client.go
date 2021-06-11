@@ -25,7 +25,7 @@ func waitFunc(cmdString string) (string, bool){
         })
         pg.D(data, code, msg)
         return "请输入请求参数", true
-    case "mysql", "mongo", "redis":
+    case "mysql", "mongo", "redis", "orm":
         dns := "grpc://PG/db/v1/" + cmdString
         data, code, msg := svc.Call(context.Background(), dns, pg.M{})
         pg.D(data, code, msg)

@@ -45,10 +45,18 @@ func (y *YamlConf)Server(filePath string) *YamlConf{
 
     // 添加默认的限流 和 熔断
     serverConf.ServerRoot = util.FileRealPath(y.Root)
-    serverConf.LimitServer = DefaultConf.LimitServer
-    serverConf.LimitClient = DefaultConf.LimitClient
-    serverConf.BreakerServer = DefaultConf.BreakerServer
-    serverConf.BreakerClient = DefaultConf.BreakerClient
+    if serverConf.LimitServer == nil {
+        serverConf.LimitServer = DefaultConf.LimitServer
+    }
+    if serverConf.LimitClient == nil {
+        serverConf.LimitClient = DefaultConf.LimitClient
+    }
+    if serverConf.BreakerServer.Name == "" {
+        serverConf.BreakerServer = DefaultConf.BreakerServer
+    }
+    if serverConf.BreakerClient.Name == "" {
+        serverConf.BreakerClient = DefaultConf.BreakerClient
+    }
 
     // 添加用到的mysql，mongo，redis， rabbitmq
     y.tmpConf = make(map[string][]string)

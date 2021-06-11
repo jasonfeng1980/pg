@@ -1,6 +1,7 @@
 package conf
 
 import (
+    "github.com/jasonfeng1980/pg/util"
     "github.com/sony/gobreaker"
     "golang.org/x/time/rate"
     "runtime"
@@ -53,18 +54,19 @@ var DefaultConf = Config{
             return false
         },
         OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
-            //if to == gobreaker.StateOpen {
-            //   log.With(log.NewNopLogger(), "type", "warnning", "from", name, "to", to)
-            //} else {
-            //   log.With(log.NewNopLogger(),"from", name, "to", to)
-            //}
+            if to == gobreaker.StateOpen {
+                util.Log.With("from", name, "to", to).Warnln()
+            } else {
+                util.Log.With("from", name, "to", to).Warnln()
+            }
         },
     },
     BreakerClient: gobreaker.Settings{
         Name:    "Gobreaker-client",
         Timeout: 30 * time.Second,
     },
-    // 缓存redis 别名
+
+    // 缓存redis-别名, 缓存时间
     CacheRedis: "",
     CacheSec:   600,
 }

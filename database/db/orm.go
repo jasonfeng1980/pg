@@ -281,13 +281,13 @@ func OrmInit(confName, appName string, ormPath string){
             Pk: tablePk,
             FieldArr: tableField,
             Field: tableColumns,
-        }, appName, ormPath)
+        }, confName, appName, ormPath)
     }
 
 }
 
 // 创建ORM文件  /orm/$app+_tmp/ [$table1.go, $table2.go, ...]
-func createOrmTable(table ormTable, appName string, ormPath string){
+func createOrmTable(table ormTable, confName string, appName string, ormPath string){
     var ret = `package {package}
 
 import (
@@ -301,9 +301,9 @@ type {Table.Name} struct {
 
 func {Table}() *{Table.Name}{
   ret := &{Table.Name}{}
-  q, ok := pg.MySQL.Get("{package}")
-  if !ok {
-    panic("数据库配置名称错误 ：{package}" )
+  q, err := pg.MySQL.Get("{confName}")
+  if err != nil {
+    panic("数据库配置名称错误 ：{confName}" )
   }
   ret.Query = q
   ret.Name = "{Table.Name}"
@@ -341,6 +341,7 @@ func {Table}() *{Table.Name}{
         }
     }
 
+    ret =  strings.Replace(ret, "{confName}", confName, -1)
     ret =  strings.Replace(ret, "{package}", appName, -1)
     ret =  strings.Replace(ret, "{Table}", util.StrUFirstForSplit(table.Name, "_"), -1)
     ret =  strings.Replace(ret, "{Table.Name}", table.Name, -1)

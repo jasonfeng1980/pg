@@ -30,9 +30,17 @@ func (mw loggingMiddleware) Call(ctx context.Context, dns string, jsonParams map
     }
     defer func(begin time.Time) {
         logArgs = append(logArgs, "dns", dns, "use", time.Since(begin), "params", jsonParams)
+        if util.Log.ShowDebug { // debug模式，显示response
+            logArgs = append(logArgs,"response", util.M{
+                    "data": data,
+                    "msg": msg,
+                    "code": code,
+                })
+        }
         mw.logger.Log(logArgs...)
     }(time.Now())
-    return mw.next.Call(ctx, dns, jsonParams)
+    data, code, msg = mw.next.Call(ctx, dns, jsonParams)
+    return
 }
 
 // 服务监控 每请求一次+1

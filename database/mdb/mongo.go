@@ -44,6 +44,11 @@ func (m *Mongo)Conn(mdbConf map[string]conf.MongoConf){
     }
 }
 
+func (m *Mongo)SetCacheRedis(client *redis.Client, expr time.Duration){
+    m.CacheRedisClient = client
+    m.CacheExpr = expr
+}
+
 // 获取新的执行QUERY
 func (m *Mongo)Get(name string)(*Query, error){
     if conf, ok := m.confList[name]; ok {

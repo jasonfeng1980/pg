@@ -69,10 +69,11 @@ func (s *Server) ConnDB(){
     // 连接redis连接池
     rdb.Redis.Conn(s.Conf.RedisConf)
     s.AddCloseFunc(rdb.Redis.Close)
-    // 设置MYSQL缓存redis句柄
+    // 设置MYSQL和MONGODB缓存redis句柄
     if s.Conf.CacheRedis != "" {
         if r, err := rdb.Redis.Client(s.Conf.CacheRedis); err == nil {
             db.MYSQL.SetCacheRedis(r, time.Second * time.Duration(s.Conf.CacheSec))
+            mdb.MONGO.SetCacheRedis(r, time.Second * time.Duration(s.Conf.CacheSec))
         } else {
             util.Log.Errorln(err)
         }

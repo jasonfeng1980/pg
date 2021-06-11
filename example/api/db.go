@@ -4,6 +4,7 @@ import (
     "context"
     "github.com/jasonfeng1980/pg"
     "github.com/jasonfeng1980/pg/database/rdb"
+    "github.com/jasonfeng1980/pg/example/orm/company"
     "github.com/jasonfeng1980/pg/util"
 )
 
@@ -11,6 +12,7 @@ import (
 func init() {
     api := pg.MicroApi()
     api.Register("POST", "db", "v1", "mysql", dbMysql)
+    api.Register("POST", "db", "v1", "orm", dbOrm)
     api.Register("POST", "db", "v1", "mongo", dbMongo)
     api.Register("GET", "db", "v1", "redis", dbRedis)
 }
@@ -38,9 +40,15 @@ func dbMysql(ctx context.Context, params map[string]interface{})(interface{}, in
     if err != nil {
         return pg.Err(err)
     }
-    pg.D(ret)
-    myLog := pg.Log.Get("login")
-    myLog.With("userId", 8888, "userName", "张三丰").Infoln("登录成功")
+    //pg.D(ret)
+    return pg.Suc(ret)
+}
+func dbOrm(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {
+    c := company.Company()
+    ret, _ := c.Page(10, 1).
+        Cache(true).
+        Query().
+        Array()
     return pg.Suc(ret)
 }
 func dbMongo(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {
@@ -50,24 +58,25 @@ func dbMongo(ctx context.Context, params map[string]interface{})(interface{}, in
     }
     ret, err := mdb.Select("*").
         From("user").
-        Where(pg.M{"info.name": pg.M{"$lte":"王二"}}).
-        //Where("info.name", pg.M{"$lte":"王二"}). // 效果同上
+        Where(pg.M{"info.name": pg.M{"$regex":"王"}}).
+        //Where("info.name", pg.M{"$regex":"王"}). // 效果同上
         //GroupByMap(pg.M{
         //    "_id":"$token",
         //    "sum": bson.D{{"$sum", "$info.sex"}},
         //    "count": bson.D{{"$sum", 1}},
         //}).
-        GroupBy("token").
+        GroupBy("token").   // 等同上条的 _id, count的效果
         //Having(pg.M{"count": pg.M{"$gte": 16}}).
         Having("count", pg.M{"$gte": 16}). // 效果同上
         OrderBy("create_at desc").
-        Limit(0, 20).
+        Limit(0, 1).
+        Cache(true).
         Query().
         Array()
     if err != nil {
         return pg.Err(err)
     }
-    pg.D(ret)
+    //pg.D(ret)
     return pg.Suc(ret)
 }
 func dbRedis(_ context.Context, params map[string]interface{})(interface{}, int64, string) {

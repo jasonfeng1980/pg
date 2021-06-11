@@ -4,6 +4,7 @@ import (
     "context"
     "database/sql"
     "fmt"
+    "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/database/rdb"
     "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/util"
@@ -403,20 +404,22 @@ func (q *Query)Query(args ...interface{}) *Result{
 
     t := time.Now()
     cacheGet := false
+    cacheKeyName := ""
     defer func() {
         driver := "MYSQL"
         if cacheGet {
-            driver = "REDIS缓存"
+            driver = "REDIS缓存-MYSQL"
         }
-        util.Log.Logger.With("driver", driver, "query", query, "args", fmt.Sprint(args),
-            "useTime", time.Since(t) ).Debug()
+        util.Log.Logger.With("driver", driver, "args", fmt.Sprint(args),
+            "cacheName", cacheKeyName, "useTime", time.Since(t) ).Debug(query)
     }()
 
     if argLen == 1{
         return q.execForArray(query)
     } else if len(q.options.selects)>0 {
         if q.options.useCache { // 使用缓存
-            cacheKey := q.CacheSql(context.Background(), q.db.Conf.W.Database, query, args)
+            cacheKey := q.CacheSql(context.Background(), q.db.Conf.W, query, args)
+            cacheKeyName = cacheKey.Name
             if rs, err := cacheKey.Get(); err == nil {
                 cacheGet = true
                 return &Result{
@@ -442,13 +445,14 @@ func (q *Query)Query(args ...interface{}) *Result{
 }
 
 // 缓存SQL
-func (q *Query)CacheSql(ctx context.Context, dbConfName, sql string, args []interface{}) *rdb.String{
-    argStr := fmt.Sprint(args)
+func (q *Query)CacheSql(ctx context.Context, c conf.MysqlConf, sql string, args []interface{}) *rdb.String{
+    argByte, _ :=util.JsonEncode(args)
+    argStr := string(argByte[:])
+    cacheKey := fmt.Sprintf("%s:%d/%s->%s<-%s", c.Host, c.Port, c.Database, sql, argStr)
     return &rdb.String{
         Key: rdb.Key{
             CTX: ctx,
-            //Name: "SQL_CACHE:" + util.StrMd5(dbConfName + ":" + sql + "[" + strings.Join(argStr, ",") + "]"),
-            Name: "SQL_CACHE:" + util.StrMd5(dbConfName + ":" + sql + " - "+ argStr),
+            Name: "DB_CACHE:" + util.StrMd5(cacheKey),
             Client: MYSQL.CacheRedisClient,
             Expr: MYSQL.CacheExpr,
         },

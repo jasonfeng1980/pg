@@ -13,7 +13,7 @@
 ├── cmd                             # 命令目录
 │   ├── batch                         # 批处理
 │   │   └── client.go
-│   └── micro                         # 微服务启动命令
+│   └── micro                         # 微服务目录
 │       └── sso.go
 ├── conf                            # 配置目录
 │   ├── demo                          # 某一个服务的配置
@@ -47,11 +47,10 @@ svc := pg.Server("../"")
 svc.Run()
 ```
 ### 调用服务API
-dns格式      [grpc|http]://服务名称/module/version/action
 ```go
 svc := pg.Client()
 defer svc.Close()
-# dns  grpc://服务名称/module/version/action
+// dns   [grpc|http]://服务名称/module/version/action
 dns :=  "http://PG/auth/v1/login"
 data, code, msg := svc.Call(context.Background(), dns, pg.M{
     "user_mobile": "186",
@@ -116,7 +115,7 @@ USER:
 DEMO:
   RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
   Network:  tcp         # 链接方式 tcp | unix
-  Addr:     docker.for.mac.host.internal:6379 # 服务地址，主机名:端口，默认localhost:6379
+  Addr:     localhost:6379 # 服务地址，主机名:端口，默认localhost:6379
   Password:             # 密码  就是auth的部分
   DB:       0           # 数据库
   MasterName:           # 哨兵模式的 MasterName
@@ -356,8 +355,8 @@ if err != nil {
 }
 ret, err := mdb.Select("*").
   From("user").
-  Where(pg.M{"info.name": pg.M{"$lte":"王二"}}).
-  //Where("info.name", pg.M{"$lte":"王二"}). // 效果同上条
+  Where(pg.M{"info.name": pg.M{"$regex":"王"}}).
+  //Where("info.name", pg.M{"$regex":"王"}). // 效果同上条
   //GroupByMap(pg.M{
   //    "_id":"$token",
   //    "sum": bson.D{{"$sum", "$info.sex"}},
@@ -367,7 +366,8 @@ ret, err := mdb.Select("*").
   //Having(pg.M{"count": pg.M{"$gte": 16}}).
   Having("count", pg.M{"$gte": 16}). // 效果同上条
   OrderBy("create_at desc").
-  Limit(0, 20).
+  Limit(0, 1).
+  Cache(true).
   Query().
   Array()
 ```
