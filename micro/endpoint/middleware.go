@@ -3,7 +3,6 @@ package endpoint
 import (
     "context"
     "fmt"
-    "github.com/go-kit/kit/tracing/opentracing"
     "github.com/jasonfeng1980/pg/util"
     stdopentracing "github.com/opentracing/opentracing-go"
     otext "github.com/opentracing/opentracing-go/ext"
@@ -77,14 +76,12 @@ func TraceServer(otTracer stdopentracing.Tracer) endpoint.Middleware {
             } else {
                 serverSpan = otTracer.StartSpan(name)
             }
-
             defer serverSpan.Finish()
             otext.SpanKindRPCServer.Set(serverSpan)
             ctx = stdopentracing.ContextWithSpan(ctx, serverSpan)
             return next(ctx, request)
         }
     }
-    return opentracing.TraceServer(otTracer, "call")
 }
 
 // trace client
@@ -92,21 +89,14 @@ func TraceClient(name string, otTracer stdopentracing.Tracer) endpoint.Middlewar
     return func(next endpoint.Endpoint) endpoint.Endpoint {
         return func(ctx context.Context, request interface{}) (interface{}, error) {
             var clientSpan stdopentracing.Span
-            name := ">> " + request.(CallRequest).Dns
-            if parentSpan := stdopentracing.SpanFromContext(ctx); parentSpan != nil {
-                clientSpan = otTracer.StartSpan(
-                    name,
-                    stdopentracing.ChildOf(parentSpan.Context()),
-                )
-            } else {
+            if clientSpan = stdopentracing.SpanFromContext(ctx); clientSpan == nil {
                 clientSpan = otTracer.StartSpan(name)
             }
-            defer clientSpan.Finish()
+            clientSpan.LogKV("Call", request.(CallRequest).Dns)
             otext.SpanKindRPCClient.Set(clientSpan)
             ctx = stdopentracing.ContextWithSpan(ctx, clientSpan)
             return next(ctx, request)
         }
     }
-    //return opentracing.TraceClient(otTracer, name)
 }
 

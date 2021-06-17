@@ -10,9 +10,14 @@
 │   └── demo                          # 示例：一个服务文件夹
 │       ├── usesr.go
 │       └── auth.go
+├── build                           # 编译目录
+│   ├── batch                         # 批处理&计划任务
+│   │   └── crontab*
+│   └── micro                         # 微服务目录
+│       └── sso*
 ├── cmd                             # 命令目录
-│   ├── batch                         # 批处理
-│   │   └── client.go
+│   ├── batch                         # 批处理&计划任务
+│   │   └── crontab.go
 │   └── micro                         # 微服务目录
 │       └── sso.go
 ├── conf                            # 配置目录
@@ -407,7 +412,7 @@ rdb.ZAdd(ctx, name1,
         &redis.Z{1, "a"},
         &redis.Z{2, "b"})
 // 推荐操作
-  // 在配置文件里设计redis的KEY，可以防止单独文件里，统一管理
+  // 在配置文件里设计redis的KEY，可以放在单独文件里，统一管理
 ctx := context.Background()
 UserName := func() rdb.String{
     return rdb.String{
@@ -435,7 +440,6 @@ ui := UserInfo(888)
 u.Set("张三丰")
     // 只取JoinMode里的key对应的值，不存储KEY
 info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息不存储"})
-
 ui.HSet(info)
 retName, err := u.Get()
 tInfo, _ := ui.HGet()       // 18〡备注
@@ -444,9 +448,9 @@ retInfo, _ := ui.Decode(tInfo) // map[string]string{"age": "18", "desc": "备注
 
 ### LOG-日志
 - 日志级别默认是Info
-- 如果配置LogDebug:true,日志级别是Trace
+- 如果配置LogDebug:true,日志级别是Trace,显示文件行号和请求的response
 ```go
-// 记录DEBUG日志 日志级别DEBUG 会显示文件，行号
+// 记录DEBUG日志 日志级别DEBUG 会显示文件，行号，美化json
 pg.D("a", "b", "c")  
 // 记录DEBUG日志并退出
 pg.DD("a")  
@@ -456,7 +460,7 @@ myLog := pg.Log.Get("login")
     // With(kvs  ...interface{})
 myLog.With("userId", 8888, "userName", "张三丰").
     // 支持Trace|Debug|Info|Warn|Error|Fatal|Panic()
-      Info("登录成功") 
+    Info("登录成功") 
 ```
 
 
