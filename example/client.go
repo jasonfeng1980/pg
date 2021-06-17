@@ -8,7 +8,21 @@ import (
 )
 
 func main(){
+    root := "../"
+    pg.YamlRead(root).
+        Server("example/conf/demo/client_01_dev.yaml").
+        Mysql("example/conf/mysql.yaml").
+        Mongo("example/conf/mongo.yaml").
+        Redis("example/conf/redis.yaml").
+        Rabbitmq("example/conf/rabbitmq.yaml").
+        Set()
+    svc := pg.Server()
+    svc.Script(clientTest)
+}
+
+func clientTest() error {
     util.ConsoleTip("请输入请求方式", waitFunc)
+    return nil
 }
 
 func waitFunc(cmdString string) (string, bool){
@@ -16,6 +30,14 @@ func waitFunc(cmdString string) (string, bool){
     svc := pg.Client()
     defer svc.Close()
     switch cmdString {
+    case "test":
+        dns := "http://CLIENT/auth/v1/test"
+        data, code, msg := svc.Call(context.Background(), dns, pg.M{
+            "u": "186",
+            "p": 1,
+        })
+        pg.D(data, code, msg)
+        return "请输入请求参数", true
     case "http", "grpc":
         // dns  服务类型://服务名称/module/version/action
         dns := cmdString + "://PG/auth/v1/login"

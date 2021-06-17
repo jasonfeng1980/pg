@@ -406,12 +406,15 @@ func (q *Query)Query(args ...interface{}) *Result{
     cacheGet := false
     cacheKeyName := ""
     defer func() {
+        if !util.Log.ShowDebug {
+            return
+        }
         driver := "MYSQL"
         if cacheGet {
             driver = "REDIS缓存-MYSQL"
         }
         util.Log.Logger.With("driver", driver, "args", fmt.Sprint(args),
-            "cacheName", cacheKeyName, "useTime", time.Since(t) ).Debug(query)
+            "cacheName", cacheKeyName, "use", time.Since(t) ).Debug(query)
     }()
 
     if argLen == 1{

@@ -236,7 +236,7 @@ func main(){
         Server("example/conf/demo/pg_11_dev.yaml").
         Set()
     svc := pg.Server()
-    svc.Script(test)       # 满足 func() error 就可以
+    svc.Script(test)       // 满足 func() error 就可以
 }
 
 func test() error {
@@ -277,7 +277,7 @@ ret, err := db.Select("*").
     Having("company_id >?", 1).
     OrderBy("company_money desc").
     Limit(3, 0).
-    Cache(true). # 用redis缓存结果，读配置的CacheRedis和CacheSec
+    Cache(true).  // 用redis缓存结果，读配置的CacheRedis和CacheSec
     Query().   
     Array()
 // 更新
@@ -434,7 +434,7 @@ u := UserName()
 ui := UserInfo(888)
 u.Set("张三丰")
     // 只取JoinMode里的key对应的值，不存储KEY
-info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息"})
+info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息不存储"})
 
 ui.HSet(info)
 retName, err := u.Get()

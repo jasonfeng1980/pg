@@ -473,7 +473,7 @@ func (q *Query)Query(args ...interface{}) (ret *Result){
             driver = "REDIS缓存-MONGO"
         }
         util.Log.Logger.With("driver", driver, "cacheName", cacheKeyName,
-            "useTime", time.Since(t) ).Debug(q.buildSql())
+            "use", time.Since(t) ).Debug(q.buildSql())
     }()
 
     if q.options.useCache { // 使用缓存

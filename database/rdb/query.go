@@ -40,6 +40,7 @@ type Stream struct{
     Key
 }
 
+// arg 只允许为 map[string]int32|int64|int|float32|float64|float|string
 func (h *Hash)Encode(arg map[string]interface{}) (string, error){
     if len(h.JoinMode) == 0 { // 不需要JOIN 就直接返回
         r, err := util.JsonEncode(arg)

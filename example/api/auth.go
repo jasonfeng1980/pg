@@ -22,13 +22,13 @@ func authTest(ctx context.Context, params map[string]interface{})(interface{}, i
 
     wg.Add(2)
     go func() {
-       data, code, msg := svc.Call(ctx, "grpc://PG/auth/v1/logout", nil)
-        log.Infoln(data, code, msg)
+       data, code, msg := svc.Call(ctx, "grpc://CLIENT/auth/v1/logout", pg.M{})
+       log.Infoln(data, code, msg)
        wg.Done()
     }()
     go func() {
-       data, code, msg := svc.Call(ctx, "http://PG/auth/v1/logout", nil)
-        log.Infoln(data, code, msg)
+       data, code, msg := svc.Call(ctx, "http://PG/auth/v1/logout", pg.M{})
+       log.Infoln(data, code, msg)
        wg.Done()
     }()
     wg.Wait()

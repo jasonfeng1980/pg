@@ -110,7 +110,7 @@ func dbRedis(_ context.Context, params map[string]interface{})(interface{}, int6
     ui := UserInfo(888)
     u.Set("张三丰")
         // 只取JoinMode里的key对应的值，不存储KEY
-    info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息"})
+    info, _ := ui.Encode(pg.M{"age":18, "desc":"备注", "xxx":"无关信息不存储"})
 
     ui.HSet(info)
     retName, err := u.Get()
