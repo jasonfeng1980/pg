@@ -354,7 +354,7 @@ util.Error("msg")
 ```go
 ddd.BuildEntity(dbHandleName, "当前的包名", "资源仓储目录名")
 ```
-- 详见  github.com/jasonfeng1980/pg/build/build.go
+- 详见  https://github.com/jasonfeng1980/pg/blob/master/build/build.go
 ```bash
 pg build -c dev.json -db demo     # pg build -c 配置文件   -db 数据库别名
 ```
