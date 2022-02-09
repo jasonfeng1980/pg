@@ -401,9 +401,6 @@ func (ch *Channel) recvContent(f frame) error {
 		return ch.transition((*Channel).recvMethod)
 
 	case *bodyFrame:
-		if cap(ch.body) == 0 {
-			ch.body = make([]byte, 0, ch.header.Size)
-		}
 		ch.body = append(ch.body, frame.Body...)
 
 		if uint64(len(ch.body)) >= ch.header.Size {
@@ -553,7 +550,7 @@ ordered Ack and Nack DeliveryTag to the respective channels.
 For strict ordering, use NotifyPublish instead.
 */
 func (ch *Channel) NotifyConfirm(ack, nack chan uint64) (chan uint64, chan uint64) {
-	confirms := ch.NotifyPublish(make(chan Confirmation, cap(ack)+cap(nack)))
+	confirms := ch.NotifyPublish(make(chan Confirmation, len(ack)+len(nack)))
 
 	go func() {
 		for c := range confirms {

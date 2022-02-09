@@ -1,6 +1,7 @@
 package http
 
 import (
+    "context"
     "fmt"
     "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/ecode"
@@ -11,7 +12,7 @@ import (
 )
 
 
-func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map[string]interface{}, err error){
+func getRequestParams(ctx context.Context ,r *http.Request) (reCtx context.Context, dns string, params map[string]interface{}, err error){
     dns = fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
 
     var (
@@ -20,7 +21,7 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
     )
 
     if r.URL.Path == "/api"{ // 服务调用
-        util.Json.NewDecoder(r.Body).Decode(&jsonRequest)
+        util.JsonDecoder(r.Body).Decode(&jsonRequest)
         if v, ok:=jsonRequest["Dns"]; ok {// 传参
             dns = v.(string)
             if jsonRequest["Params"] != nil {
@@ -32,7 +33,7 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
     } else {
         get := httpDecodeArgs(r.URL.Query())
         var post map[string]interface{}
-        r.ParseMultipartForm(conf.WebMaxBodySizeM)
+        r.ParseMultipartForm(conf.Conf.WebMaxBodySizeM)
         if r.MultipartForm != nil {
             if r.MultipartForm.File != nil {
                 files = r.MultipartForm.File
@@ -41,18 +42,19 @@ func getRequestParams(conf conf.Config, r *http.Request) (dns string, params map
             post = httpDecodeArgs(r.MultipartForm.Value)
 
         } else {
-            util.Json.NewDecoder(r.Body).Decode(&jsonRequest)
+            util.JsonDecoder(r.Body).Decode(&jsonRequest)
             r.ParseForm()
             post = httpDecodeArgs(r.PostForm)
         }
         params = util.MapMerge(jsonRequest, post, get)
         if files != nil { // 文件上传
+            util.SessionSet(ctx, service.UploadFile, files)
             params[service.UploadFile] = files
         }
     }
+    util.SessionSet(ctx, service.RequestHandle, r)
 
-    params[service.RequestHandle] = r
-    return
+    return ctx, dns, params, err
 }
 
 
@@ -61,7 +63,6 @@ func httpDecodeArgs(args map[string][]string)  map[string]interface{} {
     handle := make(map[string]interface{})
     for k, arg := range args {
         for _, v := range arg {
-            //var handle map[string]interface{}
             isArray := false
             // 将a[]  变成 a
             if lenK := len(k); lenK > 2 && k[lenK-2:] == "[]" {

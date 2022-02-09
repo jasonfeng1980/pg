@@ -74,3 +74,11 @@ func FileRealPath(path string) string{
     }
     return path
 }
+// 判断并获取文件的路径
+func FileRootPath(path string, root string) string{
+    if path[:1]=="/" {
+        return path
+    }
+    path = root + "/" + path
+    return FileRealPath(path)
+}

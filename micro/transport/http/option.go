@@ -2,34 +2,49 @@ package http
 
 import (
     "context"
-    "github.com/go-kit/kit/tracing/opentracing"
     "github.com/jasonfeng1980/pg/ecode"
-    callendpoint "github.com/jasonfeng1980/pg/micro/endpoint"
+    "github.com/jasonfeng1980/pg/micro/endpoint"
     "github.com/jasonfeng1980/pg/util"
+    "github.com/opentracing/opentracing-go"
+    "github.com/opentracing/opentracing-go/ext"
     "net/http"
-
-    "github.com/go-kit/kit/transport"
-    kitHttp "github.com/go-kit/kit/transport/http"
-    stdopentracing "github.com/opentracing/opentracing-go"
 )
 
-
-func DefaultClientOptions(otTracer stdopentracing.Tracer) []kitHttp.ClientOption {
-    logger := util.Log
-    opts := []kitHttp.ClientOption{
-        kitHttp.ClientBefore(opentracing.ContextToHTTP(otTracer,  logger)),
+// 链路追踪-客户端
+func TraceClient(tracer opentracing.Tracer) func(ctx context.Context, r *http.Request) context.Context {
+    return func(ctx context.Context, r *http.Request) context.Context {
+        if tracer == nil {
+            return ctx
+        }
+        if span := opentracing.SpanFromContext(ctx); span != nil {
+            if err := tracer.Inject(
+                span.Context(),
+                opentracing.HTTPHeaders,
+                opentracing.HTTPHeadersCarrier(r.Header),
+            ); err != nil {
+                util.Error("", "err", err)
+            }
+        }
+        return ctx
     }
-    return opts
 }
-
-func DefaultServerOptions(otTracer stdopentracing.Tracer) []kitHttp.ServerOption {
-    logger := util.Log
-    opts := []kitHttp.ServerOption{
-        kitHttp.ServerErrorEncoder(errorEncoder),
-        kitHttp.ServerErrorHandler(transport.NewLogErrorHandler(logger)),
+// 链路追踪-服务端
+func TraceServer(tracer opentracing.Tracer) func(ctx context.Context, r *http.Request) context.Context {
+    return func(ctx context.Context, r *http.Request) context.Context{
+        if tracer == nil {
+            return ctx
+        }
+        var span opentracing.Span
+        wireContext, err := tracer.Extract(
+            opentracing.HTTPHeaders,
+            opentracing.HTTPHeadersCarrier(r.Header),
+        )
+        if err != nil && err != opentracing.ErrSpanContextNotFound {
+            util.Error("", "err", err)
+        }
+        span = tracer.StartSpan("Call", ext.RPCServerOption(wireContext))
+        return opentracing.ContextWithSpan(ctx, span)
     }
-    opts = append(opts, kitHttp.ServerBefore(opentracing.HTTPToContext(otTracer, "Call", logger)))
-    return opts
 }
 
 // 错误处理
@@ -38,7 +53,7 @@ func errorEncoder(_ context.Context, err error, w http.ResponseWriter) {
     w.WriteHeader(http.StatusInternalServerError)
     code, msg := ecode.ReadError(err)
 
-    util.Json.NewEncoder(w).Encode(callendpoint.CallResponse{
+    util.JsonEncoder(w).Encode(endpoint.CallResponse{
         Code: code,
         Msg:  msg,
     })

@@ -6,54 +6,44 @@
 ### 推荐目录结构
 ```text
 ┌── README.md
-├── apps                            # 服务目录
-│   └── demo                          # 示例：一个服务文件夹
-│       ├── usesr.go
-│       └── auth.go
-├── build                           # 编译目录
-│   ├── batch                         # 批处理&计划任务
-│   │   └── crontab*
-│   └── micro                         # 微服务目录
-│       └── sso*
-├── cmd                             # 命令目录
-│   ├── batch                         # 批处理&计划任务
-│   │   └── crontab.go
-│   └── micro                         # 微服务目录
-│       └── sso.go
-├── conf                            # 配置目录
-│   ├── demo                          # 某一个服务的配置
-│   │   └── pg_11_dev.yaml
-│   ├── mysql.yaml                    # 全局mysql配置
-│   └── redis.yaml                    # 全局redis配置
-│   └── mongo.yaml                    # 全局mongo配置
-│   └── rabbitmq.yaml                 # 全局redis配置
-├── ecode                           # 错误code目录
+├── bin                                         # 启动目录
+│   └── demo_server_01.go
+├── conf                                        # 配置目录目录
+│   ├── pg_demo.01.dev.json             # 配置文件
+│   └── ssl                             # https证书目录
+│       ├── local.com.crt
+│       └── local.com.key
+├── application                                 # 应用服务目录
+│   └── demo
+│       ├── companyController.go
+│       ├── companyController_v2.go
+│       └── companyController_v3.go
+├── domain                                      # 领域服务目录
+│   └── companyService.go
+├── aggregate                                   # 多实体聚合根目录
+│   └── companyRoot.go
+├── entity                                      # 单个实体目录    自动生成的
+│   └── demoEntity
+│       ├── companyEntity.go
+│       └── companyMemberEntity.go
+├── repository                                  # 资源仓库目录    自动生成的
+│   └── DAO
+│       └── demoMapper.go
+├── ecode                                       # 错误code目录
 │   └── ecode.go
 ├── go.mod
 ├── go.sum
-├── log                             # 日志目录
-│   ├── PG11.login.210601             # 服务名  服务编号 . 用户指定名称|默认日志级别 . 年月日
-│   └── PG11.access.210601
-├── orm                             # 生成的ORM目录 全局
-│   └── demo
-│       ├── company.go
-│       └── company_member.go
-├── ssl                             # SSL证书
-│   ├── local.com.crt
-│   └── local.com.key
-├── upload                          # 上传目录
-│   └── 2021-01-13
-│       └── test.png
-└── vendor                          # vendor目录
+└── vendor                                      # vendor目录
+    └── modules.txt
 ```
 ### 快速启用服务
 ```go
-svc := pg.Server("../"")
-svc.Run()
+srv := pg.Server(context.Background())
+srv.Run()
 ```
 ### 调用服务API
 ```go
-svc := pg.Client()
+svc, _ := pg.Client()
 defer svc.Close()
 // dns   [grpc|http]://服务名称/module/version/action
 dns :=  "http://PG/auth/v1/login"
@@ -61,18 +51,19 @@ data, code, msg := svc.Call(context.Background(), dns, pg.M{
     "user_mobile": "186",
     "user_password": 11111,
 })
-util.Log.Infoln(data, code, msg)
+pg.D(data, code, msg)
 ```
 
-### 请求的API
+### 注册API
 ```go
 api := pg.MicroApi()
-api.Register("GET","orm", "v1", "page", ORMPage)
-api.Register("GET","orm", "v1", "flow", ORMFlow)
-func ORMPage(ctx context.Context, params map[string]interface{})(interface{}, int64, string) {
-	ret := "成功"
-	// do something .... 
-	return pg.Success(ret)
+api.Register("GET", "company", "info", "v1", CompanyInfo)
+// 获得公司的成员信息
+func CompanyInfo(ctx context.Context, params *util.Param)(data interface{}, code int64, msg string) {
+  // 整理参数
+  companyId := params.GetInt64("company_id")
+  // 1. 获取关联实体-公司成员的数据
+  return domain.CompanyDomain.CompanyInfo(ctx, companyId)
 }
 ```
 
@@ -81,155 +72,87 @@ func ORMPage(ctx context.Context, params map[string]interface{})(interface{}, in
 // 启动服务时
 import (
     "github.com/jasonfeng1980/pg"
-    _ "github.com/jasonfeng1980/pg/example/api"
+    _ "github.com/jasonfeng1980/pg/example/application/demo"
 )
 ```
-_ "github.com/jasonfeng1980/pg/example/api"  是 api所在的包
+_ "github.com/jasonfeng1980/pg/example/application/demo"  是 api所在的包
 
-### 全局MYSQL配置
-```yaml
-# 别名
-DEMO:
-  # 写库 DNS
-  W: mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30
-  # 读库 DNS
-  R: mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30
-TEST:
-  W: mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30
-  # 没有读库配置，就取写库的DNS
+### 全局配置
+```json
+{
+  "Build": {
+    "Package": "github.com/jasonfeng1980/pg/example" # 当前项目的包
+  },
+  "Server": {
+    "Name": "pg_demo",        # 服务别名
+    "Num": "01",              # 服务序号
+    "Root": "..",             # 根目录  如果是相对路径，相对当前执行的文件
+    "Env": "dev",             # 当前环境 dev debug  test product
+
+    "LogDir": "",             # 日志目录
+    "LogLevel": "debug",      # 日志级别
+
+    "AddrDebug": ":8081",     # 测试服务地址
+    "AddrHttp":  ":80",       # http服务地址
+    "AddrHttps": [":443", "conf/ssl/local.com.crt", "conf/ssl/local.com.key"], # https服务地址
+    "AddrGrpc":  ":8082",     # grpc服务地址
+
+    "ETCD":   "etcd://:@tcp(127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30", # etcd地址
+    "ZipkinUrl": "http://localhost:9411/api/v2/spans",    # zipkinUrl链路跟踪地址
+
+    "CacheRedis": "demo",     # 缓存sql的redis别名
+    "CacheSec":    60         # 缓存时间
+  },
+  "MySQL": {
+    "demo": [                 # 别名 DNS格式为 driver://[user]:[password]@network(host:port)/[dbname][?param1=value1&paramN=valueN]
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30",  # 写
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"   # 读
+    ],
+    "test": [
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"   # 读+写
+    ]
+  },
+  "Redis": {
+    "demo": [                 # 别名   DNS格式为 driver://[user]:[password]@network(host:port)/[dbname][?param1=value1&paramN=valueN]
+      "redis://:@tcp(localhost:6379)/0"
+    ]
+  },
+  "Mongo": {
+    "demo": [                 # 别名   DNS格式为 driver://[user]:[password]@network(host:port)/[dbname][?param1=value1&paramN=valueN]
+      "mongodb://admin:root@tpc(localhost:27017)/demo?Timeout=3&AllowDiskUse=0",
+      "mongodb://admin:root@tpc(localhost:27017)/demo?Timeout=3&AllowDiskUse=0"
+    ]
+  },
+  "KAFKA": {
+    "product": {              # 别名
+      "Server": ["127.0.0.1:9092"],
+      "Topic": ["test"],
+      "GroupId": "product"
+    }
+  }
+}
 ```
 
-### 全局MONGO配置
-```yaml
-# 别名
-USER:
-  # DNS
-  Dns: "mongodb://admin:root@localhost:27017"
-  # 超时时间
-  Timeout: 3
-  # 数据库名
-  Database: user
-  # 是否允许使用Disk
-  AllowDiskUse: 0
 
-```
-
-### 全局REDIS配置
-```yaml
-# 别名
-DEMO:
-  RedisType: CLIENT     # 类别 CLIENT 普通客户端；SENTINEL 哨兵； CLUSTER 集群
-  Network:  tcp         # 链接方式 tcp | unix
-  Addr:     localhost:6379 # 服务地址，主机名:端口，默认localhost:6379
-  Password:             # 密码  就是auth的部分
-  DB:       0           # 数据库
-  MasterName:           # 哨兵模式的 MasterName
-  PoolSize: 40          # 连接池容量
-  MinIdleConns: 10      # 闲置连接数量
-  IdleTimeout: 300      # 空闲持续时间 默认300秒
-  DialTimeout: 2        # 连接超时时间 单位秒
-  ReadTimeout: 2        # 读超时时间 单位秒
-  WriteTimeout: 2       # 写超时时间 单位秒
-```
-
-### 全局RabbitMQ配置
-```yaml
-USER:
-  Dns:  "amqp://guest:guest@localhost:5672//test"
-  Exchange:
-    logs:
-      Kind:   direct          # type fanout|direct|topic, durable
-      Info:   [true, false, false, false] # durable, auto-deleted, internal, no-wait
-      Args:     # x-expires, x-max-length, x-max-length-bytes, x-message-ttl, x-max-priority, x-queue-mode, x-queue-master-locator
-        x-expires: 300
-      Query:
-        q_log:                    # name
-          Routing: [q_log_q1, q_log_q2]        # 路由KEY
-          Info:   [true, false, false, false]       # durable 持久化, autoDelete 自动删除, exclusive 排他, NoWait 不需要服务器的任何返回
-          Delay:  [2, 5, 10, 100, 600, 1800, 3600, 86400] # 延时多少秒再次到队列里执行
-          Qos:    [1, 0, 0]        # count, size, global
-
-```
-
-### 微服务配置
-```yaml
-ServerName: PG       # 服务名称
-ServerNo:   11       # 服务序号
-
-# 日志配置
-LogDir:                # 日志文件夹 info.年月日.log | error.201012.log
-LogShowDebug: true     # 是否记录测试日志
-
-# 网站配置
-WebMaxBodySizeM:     32        # 最大允许上传的大小，单位M
-WebReadTimeout:     10 # 读取超时时间
-WebWriteTimeout:    30 # 写入超时时间
-
-# 微服务配置
-DebugAddr:  :8180    # 测试服务地址
-HttpAddr:   :8181    # HTTP服务地址
-HttpsInfo:
-  - :443
-  - ssl/local.com.crt
-  - ssl/local.com.key           # https 和相应证书
-GrpcAddr:   :8182    # grpc服务地址
-
-# etcd 服务发现
-EtcdAddr:   127.0.0.1:2379   # etcd地址
-EtcdTimeout: 3         # 超时时间 单位秒
-EtcdKeepAlive: 3       # 保持时间 单位秒
-EtcdRetryTimes: 3      # 重试次数
-EtcdRetryTimeout: 30   # 重试超时时间 单位秒
-
-# 链路跟踪配置
-ZipkinUrl:  http://localhost:9411/api/v2/spans  # zipkin地址
-
-# 缓存redis别名
-CacheRedis:   DEMO,
-CacheSec:     600,
-
-# 限流，熔断无需配置，取默认的
-
-# MYSQL 取全局库的别名
-MySQL:
-  - DEMO
-  - TEST
-
-# Mongo 取全局库的别名
-Mongo:
-  - USER
-
-# REDIS 取全局库的别名
-Redis:
-  - DEMO
-
-# Rabbitmq 取全局库的别名
-RabbitMQ:
-  - USER
-
-```
-
-### 使用YAML配置，启动服务
+### 启动服务
 ```go
 package main
 
 import (
-    "github.com/jasonfeng1980/pg"
-    _ "github.com/jasonfeng1980/pg/example/api"
+  "context"
+  "github.com/jasonfeng1980/pg"
+  "github.com/jasonfeng1980/pg/util"
+
+  _ "github.com/jasonfeng1980/pg/example/application/demo"
 )
 
 func main(){
-    root := "../"
-    pg.YamlRead(root).
-        Server("example/conf/demo/pg_11_dev.yaml").
-        Mysql("example/conf/mysql.yaml").
-        Mongo("example/conf/mongo.yaml").
-        Redis("example/conf/redis.yaml").
-        Rabbitmq("example/conf/rabbitmq.yaml").
-        Set()
-
-    svc := pg.Server()
-    svc.Run()
+  if err :=pg.Load("../conf/pg_demo.01.dev.json");err!= nil {
+    util.Panic("加载配置错误", "error", err)
+    return
+  }
+  srv := pg.Server(context.Background())
+  srv.Run()
 }
 ```
 
@@ -317,39 +240,6 @@ ret, err := tx.Select("*").
     Array()
 tx.Commit()     // 提交
 tx.Rollback()   // 回滚
-```
-
-### ORM操作
-```go
-import orm_demo "test/orm/demo"
-
-// 获取company 实例
-orm := orm_demo.Company()
-// ORM-创建
-rs, err := orm.Create(params)
-// 获取单行实例
-line := orm.Line(id)
-// ORM-单行编辑
-rs, err := line.Edit(params)
-// ORM-删除
-ret := line.Remove()
-// ORM-查看
-ret := line.Info() 
-ret := line.Cache(true).Info() // 带redis缓存
-// ORM-分页-普通
-ret, err := orm.Page(5, 1).
-  Where("company_money=?",params["company_money"]).
-  OrderBy("company_id asc").
-  Cache(true).  // 使用缓存， 不缓存可以不使用Cache
-  Query().
-  Array()
-// ORM-分页-流式
-ret, _:= orm.Flow(5, "company_id>?", params["company_id"]).
-  Where("company_money=?",params["company_money"]).
-  OrderBy("company_id asc").
-  Cache(true).   // 使用缓存， 不缓存可以不使用Cache
-  Query().
-  Array()
 ```
 
 ### MONGO操作
@@ -448,23 +338,26 @@ retInfo, _ := ui.Decode(tInfo) // map[string]string{"age": "18", "desc": "备注
 
 ### LOG-日志
 - 日志级别默认是Info
-- 如果配置LogDebug:true,日志级别是Trace,显示文件行号和请求的response
+- 如果配置LogLevel = debug, 显示文件行号和请求的response
 ```go
 // 记录DEBUG日志 日志级别DEBUG 会显示文件，行号，美化json
 pg.D("a", "b", "c")  
 // 记录DEBUG日志并退出
 pg.DD("a")  
 
-// 获取句柄, 如果配置LogDir!= "", 会生成新的日志文件
-myLog := pg.Log.Get("login")
-    // With(kvs  ...interface{})
-myLog.With("userId", 8888, "userName", "张三丰").
-    // 支持Trace|Debug|Info|Warn|Error|Fatal|Panic()
-    Info("登录成功") 
+util.Info("msg", "key", "value", "k2", "v2")
+util.Error("msg")
+
 ```
 
-
-
+### 自动生成资源仓库和实体文件
+```go
+ddd.BuildEntity(dbHandleName, "当前的包名", "资源仓储目录名")
+```
+- 详见  github.com/jasonfeng1980/pg/build/build.go
+```bash
+pg build -c dev.json -db demo     # pg build -c 配置文件   -db 数据库别名
+```
 
 
 

@@ -24,6 +24,7 @@ type FilterConf struct{
     Msg  string
     Pass bool
     Need bool
+    Enum []string
 }
 // 设置最长长度
 func (f *FilterConf)SetLenMax(lenMax int) *FilterConf{
@@ -47,7 +48,10 @@ func (f *FilterConf)Check(arg interface{})bool{
 }
 
 func (f *Filter)MySQL(mysqlType string, unsigned bool, isNeed bool)  *FilterConf{
-    var check string
+    var (
+    	check string
+    	enum  []string
+    )
     if unsigned {
         check = "u-" + mysqlType
     } else {
@@ -59,8 +63,15 @@ func (f *Filter)MySQL(mysqlType string, unsigned bool, isNeed bool)  *FilterConf
     if len(lenMax) > 0 {
         check = strings.Replace(check, "("+ lenMax + ")", "", 1)
     }
+    // 获取 enum('secondhand','designer','resell','plum','reclo','big_customer','vip','brandnew','zhongxin')
+    if mysqlType[0:4] == "enum" {
+        check = "enum"
+        enum = strings.Split(strings.ReplaceAll(mysqlType[5:len(mysqlType)-1], "'", ""), ",")
+    }
 
     switch check  {
+    case "enum":
+        return &FilterConf{Name: FilterFunc(f.CheckEnum), Enum: enum}
     case "int" :
         return &FilterConf{Name:FilterFunc(f.CheckInt),  Min:-2147483648, Max:2147483647, Need:isNeed}
     case "u-int":
@@ -101,7 +112,7 @@ func (f *Filter)MySQL(mysqlType string, unsigned bool, isNeed bool)  *FilterConf
             return &FilterConf{Name:FilterFunc(f.CheckStr), LenMin: 0, LenMax: lenMaxInt, Need:isNeed}  // lenMax 使用者配置
         }
 
-    case "test":
+    case "text", "json":
         return &FilterConf{Name:FilterFunc(f.CheckStr), LenMin: 0, Pass: true, Need:isNeed}  // lenMax 使用者配置
     case "logblob":
         return &FilterConf{Name:FilterFunc(f.CheckPass), Pass: true, Need:isNeed}  // lenMax 使用者配置
@@ -110,7 +121,16 @@ func (f *Filter)MySQL(mysqlType string, unsigned bool, isNeed bool)  *FilterConf
     return nil
 }
 
-// 检测数字
+// 检测枚举型
+func (f *Filter)CheckEnum(check interface{}, conf *FilterConf) bool{
+    if ret, err := util.StrParse(check); err == nil{
+        if util.ListHave(conf.Enum, ret){
+            return true
+        }
+    }
+    return false
+}
+// 检测整型
 func (f *Filter)CheckInt(check interface{}, conf *FilterConf) bool{
     if ret, err := util.Int64Parse(check); err == nil{
         if ret >=conf.Min && ret<=conf.Max {
@@ -122,7 +142,7 @@ func (f *Filter)CheckInt(check interface{}, conf *FilterConf) bool{
 
 // 检测字符串
 func (f *Filter)CheckStr(check interface{}, conf *FilterConf) bool{
-    if ret, err := util.Str(check); err == nil{
+    if ret, err := util.StrParse(check); err == nil{
         if conf.Pass { // 如果直接通过，就不检测
             return true
         }
@@ -137,7 +157,7 @@ func (f *Filter)CheckStr(check interface{}, conf *FilterConf) bool{
 
 // 检测日期
 func (f *Filter)CheckDate(check interface{}, conf *FilterConf) bool{
-    if ret, err := util.Str(check); err == nil{
+    if ret, err := util.StrParse(check); err == nil{
         if _, err := time.Parse("2006-01-02 15:04:05", ret + " 00:00:00"); err==nil {
             return true
         }
@@ -147,7 +167,7 @@ func (f *Filter)CheckDate(check interface{}, conf *FilterConf) bool{
 
 // 检测时间
 func (f *Filter)CheckDateTime(check interface{}, conf *FilterConf) bool{
-    if ret, err := util.Str(check); err == nil{
+    if ret, err := util.StrParse(check); err == nil{
         if _, err := time.Parse("2006-01-02 15:04:05", ret); err==nil {
             return true
         }
@@ -158,7 +178,7 @@ func (f *Filter)CheckDateTime(check interface{}, conf *FilterConf) bool{
 // 检测Ubigint
 func (f *Filter)CheckUBigint(check interface{}, conf *FilterConf) bool{
     regx, _:=regexp.Compile("\\d{0,20}")
-    if ret, err := util.Str(check); err == nil{ // 字符串判断
+    if ret, err := util.StrParse(check); err == nil{ // 字符串判断
         if regx.Match([]byte(ret)){ // 正则判断
             if len(ret) == 20 && ret > "18446744073709551615" { // 超过最大的uint64
                 return false
@@ -173,7 +193,7 @@ func (f *Filter)CheckUBigint(check interface{}, conf *FilterConf) bool{
 // 检测正则
 func (f *Filter)CheckRegx(check interface{}, conf *FilterConf) bool{
     if regx, err:=regexp.Compile(conf.Reg); err==nil{
-        if ret, err := util.Str(check); err == nil{
+        if ret, err := util.StrParse(check); err == nil{
             return regx.Match([]byte(ret))
         }
     }

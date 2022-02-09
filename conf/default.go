@@ -8,40 +8,34 @@ import (
     "time"
 )
 
-
-var DefaultConf = Config{
-    ServerName: "PG",
-    ServerNo:   "01",
-
+var DefaultServer =  Server{
+    // 服务
+    Name:  "pg",  		// 服务名称
+    Num:   "01",  		// 服务序号
+    Root:  "",  		// 项目根目录
+    Env:   "dev",  		// 系统环境 dev test pre prod
     // 日志
-    LogDir:      "",        // 日志文件夹
-    LogShowDebug: true,     // 是否记录测试日志
+    LogDir:      "log",  		// 日志文件夹
+    LogLevel:	"info",			// 日志记录级别
+    // 服务配置
+    AddrDebug:   ":8081",  		// 调试监听地址 metrics查看端口
+    AddrHttp:    ":80",  		// http服务监听地址
+    //AddrHttps:   [3]string,  	    // https服务监听地址 [Addr, cert, key]
+    AddrGrpc:    ":8082",  		// grpc服务监听地址
 
-    // 网站配置
-    WebMaxBodySizeM:     32<<20,   // 最大允许上传的大小
-    WebReadTimeout:     time.Second*10,  // 读取超时时间
-    WebWriteTimeout:    time.Second*30, // 写入超时时间
+    ETCD:        "etcd://:@tcp(127.0.0.1:2379,127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30",          // 服务发现配置  e.g. etcd://:@tcp(127.0.0.1:2379,127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30
+    ZipkinUrl:   "",          // 链路跟踪配置
 
-    // 微服务配置
-    DebugAddr:  ":8080",
-    HttpAddr:   ":80",
-    //HttpsInfo:  [3]string{"","",""},   // http服务监听地址 [Addr, cert, key]
+    CacheRedis: "",			// 缓存redis配置名
+    CacheSec:   60,			// 缓存时间-秒
 
-    GrpcAddr:   ":8082",
-
-    // etcd
-    EtcdAddr:   "127.0.0.1:2379",
-    EtcdTimeout: time.Second * 3,
-    EtcdKeepAlive: time.Second * 3,
-    EtcdRetryTimes: 3,
-    EtcdRetryTimeout: time.Second * 30,
-
-    // 链路跟踪配置
-    ZipkinUrl:  "http://localhost:9411/api/v2/spans",
+    WebMaxBodySizeM:  32<<20,      // 最大允许上传的大小 32M
+    WebReadTimeout:   10,  		// 读取超时时间
+    WebWriteTimeout:  30, 		// 写入超时时间
 
     // 限流
-    LimitServer:    rate.NewLimiter(rate.Limit(200*runtime.NumCPU()), 200*runtime.NumCPU()), // 限流，超过直接拒绝
-    LimitClient:    rate.NewLimiter(rate.Limit(200*runtime.NumCPU()), 200*runtime.NumCPU()), // 限流，拒绝延时等待
+    LimitServer:    rate.NewLimiter(rate.Limit(500*runtime.NumCPU()), 500*runtime.NumCPU()), // 限流，超过直接拒绝
+    LimitClient:    rate.NewLimiter(rate.Limit(500*runtime.NumCPU()), 500*runtime.NumCPU()), // 限流，拒绝延时等待
 
     // 熔断
     BreakerServer: gobreaker.Settings{
@@ -55,9 +49,9 @@ var DefaultConf = Config{
         },
         OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
             if to == gobreaker.StateOpen {
-                util.Log.With("from", name, "to", to).Warnln()
+                util.Warn(name, "from", from, "to", to)
             } else {
-                util.Log.With("from", name, "to", to).Warnln()
+                util.Warn(name, "from", from, "to", to)
             }
         },
     },
@@ -65,8 +59,6 @@ var DefaultConf = Config{
         Name:    "Gobreaker-client",
         Timeout: 30 * time.Second,
     },
-
-    // 缓存redis-别名, 缓存时间
-    CacheRedis: "",
-    CacheSec:   600,
 }
+
+

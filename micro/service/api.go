@@ -21,7 +21,7 @@ type apiValue struct {
     Method string   // 允许的请求方式 GRPC GET POST PUT DELETE
     Func Action
 }
-type Action func(c context.Context, p map[string]interface{})(data interface{}, code int64, msg string)
+type Action func(c context.Context, p *util.Param)(data interface{}, code int64, msg string)
 
 var (
     apiOnce sync.Once // 单例
@@ -40,12 +40,12 @@ func Api () *api {
 
 // 公开的方法
 // 注册新的mapping
-func (api *api) Register(httpMethod string, module string, version string, action string, someFunc Action){
+func (api *api) Register(httpMethod string, module string, action string,  version string, someFunc Action){
     httpMethod = strings.ToUpper(httpMethod)
-    util.Log.Debugf("添加[%s]方法%s/%s/%s\n", httpMethod, module, version, action)
-    key := api.makeApiKey(module, version, action)
+    util.Debug(fmt.Sprintf("添加[%s]方法%s/%s/%s", httpMethod, module, action, version))
+    key := api.makeApiKey(module, action, version)
     if _, ok := api.mapping[key]; ok {
-        panic(fmt.Sprintf("方法重复： %s/%s/%s\n", module, version, action))
+        panic(fmt.Sprintf("方法重复： %s/%s/%s", module, action, version))
     }
     api.mapping[key] = apiValue{
         Method: httpMethod,
@@ -53,8 +53,8 @@ func (api *api) Register(httpMethod string, module string, version string, actio
     }
 }
 // 获取方法
-func (api *api)Get(module, version, action string) (someFunc Action, ok bool) {
-    key := api.makeApiKey(module, version, action)
+func (api *api)Get(module, action, version string) (someFunc Action, ok bool) {
+    key := api.makeApiKey(module, action, version)
 
     value, ok := api.mapping[key]
     return value.Func, ok

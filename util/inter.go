@@ -54,18 +54,3 @@ func Int64Parse(arg interface{}) (ret int64, err error){
     return
 }
 
-func IntHideErr(errList []error, arg interface{}) int{
-    i, e := IntParse(arg)
-    if e!= nil {
-        errList = append(errList, e)
-    }
-    return i
-}
-
-func Int64HideErr(errList []error, arg interface{}) int64{
-    i, e := Int64Parse(arg)
-    if e!= nil {
-        errList = append(errList, e)
-    }
-    return i
-}

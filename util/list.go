@@ -20,6 +20,11 @@ func ListMapField(dataArg interface{}, fieldArr []string) (ret []map[string]inte
     return
 }
 
+// ListToString
+func ListStringJoin(elems []string, sep string) string {
+    return strings.Join(elems, sep)
+}
+
 // 批量清除List里字符串的前后指定字符
 func ListTrim(l []string, cutset string) (ret []string){
     for _, v := range l{
@@ -32,36 +37,46 @@ func ListTrim(l []string, cutset string) (ret []string){
 func ListHave(l interface{}, need interface{}) bool {
     switch key := need.(type) {
     case int:
-        for _, v := range l.([]int) {
-            if v == key {
-                return true
+        if InterfaceType(l) == "[]int" {
+            for _, v := range l.([]int) {
+                if v == key {
+                    return true
+                }
             }
         }
     case string:
-        for _, v := range l.([]string) {
-            if v == key {
-                return true
+        if InterfaceType(l) == "[]string" {
+            for _, v := range l.([]string) {
+                if v == key {
+                    return true
+                }
             }
         }
     case int64:
-        for _, v := range l.([]int64) {
-            if v == key {
-                return true
+        if InterfaceType(l) == "[]int64" {
+            for _, v := range l.([]int64) {
+                if v == key {
+                    return true
+                }
             }
         }
     case float64:
-        for _, v := range l.([]float64) {
-            if v == key {
-                return true
+        if InterfaceType(l) == "[]float64" {
+            for _, v := range l.([]float64) {
+                if v == key {
+                    return true
+                }
             }
         }
     }
     return false
 }
 
+// 将interface{}的列表，变成字符串的列表
+// []INTERFACE{} => []string
 func ListInterfaceToStr(l []interface{}) (ret []string){
     for _, v:=range l {
-        ret = append(ret, StrParse(v))
+        ret = append(ret, Str(v))
     }
     return
 }

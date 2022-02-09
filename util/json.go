@@ -1,16 +1,25 @@
 package util
 
 import (
-    "encoding/json"
     "github.com/jasonfeng1980/pg/ecode"
     jsoniter "github.com/json-iterator/go"
+    "io"
 )
 
-var Json = jsoniter.ConfigCompatibleWithStandardLibrary
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
+
+
+func JsonEncoder(w io.Writer) *jsoniter.Encoder{
+    return json.NewEncoder(w)
+}
+
+func JsonDecoder(r io.Reader) *jsoniter.Decoder{
+    return json.NewDecoder(r)
+}
 
 // map => json_byte
 func JsonEncode(data interface{}) ([]byte, error){
-    return Json.Marshal(data)
+    return json.Marshal(data)
 }
 // json_byte or string => map
 func JsonDecode(data interface{}, v interface{}) error{
@@ -23,10 +32,10 @@ func JsonDecode(data interface{}, v interface{}) error{
     default:
         return ecode.UtilErrDecodeJson.Error()
     }
-    return Json.Unmarshal(b, v)
+    return json.Unmarshal(b, v)
 }
 func JsonIndent(v interface{}) (string, error){
-    r, err := json.MarshalIndent(v, "", "\t")
+    r, err := json.MarshalIndent(v, "", "  ")
     if err != nil {
         return "", err
     }
@@ -36,13 +45,13 @@ func JsonIndent(v interface{}) (string, error){
 // json_string => map
 func JsonDecodeToMap(jsonStr string) (jsonMap map[string]interface{}, err error) {
     jsonMap = make(map[string]interface{})
-    err = Json.Unmarshal([]byte(jsonStr), &jsonMap)
+    err = json.Unmarshal([]byte(jsonStr), &jsonMap)
     return
 }
 
 // json_string => []map
 func JsonDecodeToListMap(jsonStr string) (jsonMap []map[string]interface{}, err error) {
     jsonMap = make([]map[string]interface{}, 0)
-    err = Json.Unmarshal([]byte(jsonStr), &jsonMap)
+    err = json.Unmarshal([]byte(jsonStr), &jsonMap)
     return
 }

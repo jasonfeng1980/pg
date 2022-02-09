@@ -1,199 +1,169 @@
 package util
 
 import (
-    "github.com/lestrrat-go/file-rotatelogs"
-    "github.com/rifflock/lfshook"
-    "github.com/sirupsen/logrus"
-    "runtime"
-    "sync"
+    "github.com/natefinch/lumberjack"
+    "go.uber.org/zap"
+    "go.uber.org/zap/zapcore"
+    "os"
+    "strings"
+    "time"
 )
 
-var (
-    Log     = log{
-        Dir:"",
-        ShowDebug: true,
-        Logger: &Logger{
-            "",
-            logrus.New(),
-        },
-    }
-    logPool = &logPools{
-        Pools: make(map[string]*Logger),
-    }
-)
-func init(){
-    Log.Level = logrus.DebugLevel
+var l *Logger
+var ln *Logger
+
+func Log() *Logger {
+    return ln
 }
 
-func LogInit(dir string, showDebug bool, serverName string, serverNo string) {
-    Log = log{
-        Dir: dir,
-        ShowDebug: showDebug,
-        PreName: serverName + serverNo,
-    }
-    Log.Logger= Log.Get("")
-    //
-    //Log = &log{
-    //    Dir: "",
-    //    ShowDebug: true,
-    //    Logger: logDefault,
-    //    PreName: serverName + serverNo,
-    //}
+// 初始化
+func init() {
+    LogInit("", "", "debug")
 }
-
-type log struct {
-    Dir     string
-    ShowDebug   bool
-    PreName string
-    *Logger
-}
-// 创建新的日志文件
-func (l *log)New(name string) (*Logger, error){
-    newLog := &Logger{
-        name,
-        logrus.New(),
-    }
-
-    // 测试模式 显示行号
-    //newLog.ReportCaller = false
-    // 非测试模式， 显示error及以上的错误
-    if l.ShowDebug {
-        newLog.Level = logrus.TraceLevel
-    } else {
-        newLog.Level = logrus.TraceLevel
-    }
-    //logFormat := &logrus.JSONFormatter{
-    //    PrettyPrint:     l.ShowDebug,         // 格式化
-    //    TimestampFormat: "06-01-02 15:04:05", // 时间格式
-    //    DisableHTMLEscape: true,              // 不转义HTML特殊字符
-    //}
-    logFormat := &logrus.TextFormatter{
-        FullTimestamp: true,
-        TimestampFormat: "2006-01-02 15:04:05", // 时间格式
-    }
-    if l.Dir != ""  {
-        newLog.Out = &nullWrite{}
-        newLog.AddHook(l.newLfsHook(name, logFormat))
-    } else {
-        newLog.Formatter = logFormat
-    }
-    return newLog, nil
-}
-func (l *log)Get(name string) *Logger{
-    return logPool.Get( name)
-}
-
-type nullWrite struct {}
-func (nu *nullWrite)Write(p []byte) (n int, err error){
-    return 0, nil
-}
-
-// 日志钩子(日志拦截，并重定向)
-func (l *log)newLfsHook(name string, logFormat logrus.Formatter) logrus.Hook {
-    writerAccess := l.logWriter(name,"access")
-    writerDebug := l.logWriter(name,"debug")
-    writerError := l.logWriter(name,"error")
-
-    // 可设置按不同level创建不同的文件名
-    lfsHook := lfshook.NewHook(lfshook.WriterMap{
-        logrus.InfoLevel:  writerAccess,
-        logrus.TraceLevel: writerDebug,
-        logrus.DebugLevel: writerDebug,
-        logrus.WarnLevel:  writerError,
-        logrus.ErrorLevel: writerError,
-        logrus.FatalLevel: writerError,
-        logrus.PanicLevel: writerError,
-    }, logFormat)
-
-    return lfsHook
-}
-func (l *log)logWriter(name, env string) *rotatelogs.RotateLogs {
-    if name != "" {
-        env = name
-    }
-    writer, err := rotatelogs.New(
-        // 日志文件
-        l.Dir + "/" + l.PreName + "." + env  + ".%y%m%d",
-
-        // 日志周期(默认每86400秒/一天旋转一次)
-        rotatelogs.WithRotationTime(86400),
-
-        // 清除历史 (WithMaxAge和WithRotationCount只能选其一)
-        //rotatelogs.WithMaxAge(time.Hour*24*7), //默认每7天清除下日志文件
-        rotatelogs.WithRotationCount(30), //只保留最近的N个日志文件
-    )
-    if err != nil {
-        panic(err)
-    }
-    return writer
-}
-
 
 type Logger struct {
-    name string
-    *logrus.Logger
-}
-func (l *Logger)ShowLine(skip int) *logrus.Entry{
-    _, file, line, _ := runtime.Caller(skip)
-    return l.With("LOG_FILE", file + ":" + StrParse(line))
-}
-func (l *Logger)LogPretty(v interface{}, callerSkip int) {
-    if Log.Dir != "" {
-        l.ShowLine(callerSkip).Debugln(v)
-        return
-    }
-    s, err := JsonIndent(v)
-    if err != nil {
-        l.Debugln(err)
-    }
-    l.ShowLine(callerSkip).Debugln(s)
+    *zap.Logger
+    S *zap.SugaredLogger
 }
 
-func (l *Logger)Log(kvs ...interface{}) error{
-    l.With(kvs...).Info()
-    return nil
+var zapLevel zapcore.Level
+
+func LogInit(filename string, serverName string, level string) {
+    var (
+        writerInfo zapcore.WriteSyncer
+        writerErr  zapcore.WriteSyncer
+    )
+    // 获取zapLevel
+    switch strings.ToLower(level) {
+    case "error":
+        zapLevel = zapcore.ErrorLevel
+    case "warn":
+        zapLevel = zapcore.WarnLevel
+    case "info":
+        zapLevel = zapcore.InfoLevel
+    case "debug":
+        zapLevel = zapcore.DebugLevel
+    default:
+        zapLevel = zapcore.DebugLevel
+    }
+    // 获取writer
+    if filename != "" {
+        writerInfo = zapcore.AddSync(&lumberjack.Logger{
+            Filename:   filename + "/" + serverName + ".access",
+            MaxSize:    200,
+            MaxBackups: 30,
+            MaxAge:     30,
+            Compress:   false,
+            LocalTime:  true,
+        })
+        writerErr = zapcore.AddSync(&lumberjack.Logger{
+            Filename:   filename + "/" + serverName +".error",
+            MaxSize:    200,
+            MaxBackups: 30,
+            MaxAge:     30,
+            Compress:   false,
+            LocalTime:  true,
+        })
+    } else {
+        writerInfo = os.Stdout
+        writerErr = os.Stdout
+    }
+    // 获取encoder
+    encoder := zapcore.NewJSONEncoder(zapcore.EncoderConfig{
+        TimeKey:     "T",
+        LevelKey:    "L",
+        CallerKey:   "C",
+        MessageKey:  "M",
+        LineEnding:  zapcore.DefaultLineEnding,
+        EncodeLevel: zapcore.LowercaseLevelEncoder,
+        EncodeTime: func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+            enc.AppendString(t.Format("2006-01-02 15:04:05"))
+        },
+        EncodeDuration: zapcore.SecondsDurationEncoder,
+        EncodeCaller:   zapcore.ShortCallerEncoder,
+    })
+
+    // 区分正常日志 和错误日志
+    levelInfo := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+        return lvl >= zapLevel && lvl < zapcore.ErrorLevel
+    })
+    levelErr := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
+        return lvl >= zapLevel && lvl >= zapcore.ErrorLevel
+    })
+
+    //core := zapcore.NewCore(encoder, writer, zapLevel)
+    core := zapcore.NewTee(
+        zapcore.NewCore(encoder, writerInfo, levelInfo),
+        zapcore.NewCore(encoder, writerErr, levelErr),
+    )
+
+    zapLog := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(0))
+    zapLogLn := zapLog.WithOptions(zap.AddCallerSkip(1))
+    l = &Logger{
+        zapLog,
+        zapLog.Sugar(),
+    }
+    ln = &Logger{
+        zapLogLn,
+        zapLogLn.Sugar(),
+    }
 }
 
-func (l *Logger)With(kvs ...interface{}) *logrus.Entry {
-    var ret = &logrus.Entry{
-        Logger: l.Logger,
-    }
+func makeZapField(kvs ...interface{}) []zap.Field{
     len := len(kvs)
-    for i:=1; i<len; i=i+2 {
-        ret = ret.WithField(StrParse(kvs[i-1]), kvs[i])
+    var ret []zap.Field
+    for i := 1; i < len; i = i + 2 {
+        ret = append(ret, zap.String(Str(kvs[i-1]), Str(kvs[i])))
     }
     return ret
 }
 
-type logPools struct {
-    rwLock sync.RWMutex
-    Pools map[string]*Logger
+//////////////////////////////////
+// 以下是快捷方式
+//////////////////////////////////
+
+
+func (* Logger) L(msgs ...interface{}) {
+    Logs(msgs...)
 }
-func (p *logPools)makeKey(name string) string{
-    return Log.PreName + "." + name
-}
-func (p *logPools)Add(l *Logger){
-    p.rwLock.Lock()
-    key := p.makeKey(l.name)
-    p.Pools[key] = l
-    p.rwLock.Unlock()
-}
-func (p *logPools)Get(name string) *Logger {
-    key := p.makeKey(name)
-    p.rwLock.RLock()
-    ret, ok := p.Pools[key]
-    p.rwLock.RUnlock()
-    if !ok{
-        var err error
-        if ret, err = Log.New(name); err ==nil {
-            p.Add(ret)
-        }
+func Logs(msgs ...interface{}) {
+    strList := make([]string, len(msgs))
+    for _, m := range msgs {
+        strList = append(strList, Str(m))
     }
-    return ret
+    ln.Debug(strings.Join(strList, "  "))
+}
+func (* Logger) D(msg interface{}, kvs ...interface{}) {
+    Debug(msg, kvs...)
+}
+func Debug(msg interface{}, kvs ...interface{}) {
+    ln.Debug(Str(msg), makeZapField(kvs...)...)
 }
 
-func LogNothing() logNothing{
-    return logNothing{}
+func (* Logger) I(msg interface{}, kvs ...interface{}) {
+    Info(msg, kvs...)
 }
-type logNothing struct {}
-func (logNothing) Log(...interface{}) error { return nil}
+func Info(msg interface{}, kvs ...interface{}) {
+    ln.Info(Str(msg), makeZapField(kvs...)...)
+}
+
+func (* Logger) W(msg interface{}, kvs ...interface{}) {
+    Warn(msg, kvs...)
+}
+func Warn(msg interface{}, kvs ...interface{}) {
+    ln.Warn(Str(msg), makeZapField(kvs...)...)
+}
+
+func (* Logger) E(msg interface{}, kvs ...interface{}) {
+    Error(msg, kvs...)
+}
+func Error(msg interface{}, kvs ...interface{}) {
+    ln.Error(Str(msg), makeZapField(kvs...)...)
+}
+
+func (* Logger) P(msg interface{}, kvs ...interface{}) {
+    Panic(msg, kvs...)
+}
+func Panic(msg interface{}, kvs ...interface{}) {
+    ln.Panic(Str(msg), makeZapField(kvs...)...)
+}

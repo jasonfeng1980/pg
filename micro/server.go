@@ -3,17 +3,26 @@ package micro
 import (
     "context"
     "fmt"
-    "github.com/go-kit/kit/sd/etcdv3"
+    "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/database/db"
     "github.com/jasonfeng1980/pg/database/mdb"
     "github.com/jasonfeng1980/pg/database/rdb"
-    "github.com/jasonfeng1980/pg/mq/rabbitmq"
+    "github.com/jasonfeng1980/pg/ecode"
+    "github.com/jasonfeng1980/pg/micro/finder"
+    "github.com/prometheus/client_golang/prometheus"
+    callHttp "github.com/jasonfeng1980/pg/micro/transport/http"
     "github.com/jasonfeng1980/pg/util"
+    "github.com/oklog/oklog/pkg/group"
+    "github.com/opentracing/opentracing-go"
     zipkinot "github.com/openzipkin-contrib/zipkin-go-opentracing"
+    "github.com/openzipkin/zipkin-go"
     "github.com/openzipkin/zipkin-go/reporter"
+    zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
     "github.com/sony/gobreaker"
     "golang.org/x/time/rate"
     "google.golang.org/grpc"
+    "io"
     "net"
     "net/http"
     "os"
@@ -21,72 +30,63 @@ import (
     "syscall"
     "time"
 
-    "github.com/go-kit/kit/endpoint"
-    "github.com/go-kit/kit/log"
-    "github.com/go-kit/kit/metrics/prometheus"
-    kitgrpc "github.com/go-kit/kit/transport/grpc"
-    "github.com/oklog/oklog/pkg/group"
-    stdopentracing "github.com/opentracing/opentracing-go"
-    zipkin "github.com/openzipkin/zipkin-go"
-    zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
-    stdprometheus "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
-
-    callConf "github.com/jasonfeng1980/pg/conf"
     callendpoint "github.com/jasonfeng1980/pg/micro/endpoint"
     callservice "github.com/jasonfeng1980/pg/micro/service"
     callGrpc "github.com/jasonfeng1980/pg/micro/transport/grpc"
     callpb "github.com/jasonfeng1980/pg/micro/transport/grpc/pb"
-    callHttp "github.com/jasonfeng1980/pg/micro/transport/http"
 )
 
-type CloseFunc func()
-
 type Server struct {
-    Conf callConf.Config
     ctx  context.Context
-    closePool []CloseFunc
+    c    *conf.Config
+    closer []io.Closer				// 结算需要关闭的
+}
+
+func NewServer(ctx context.Context) *Server{
+    return &Server{
+        ctx: ctx,
+        c:   conf.Conf,
+    }
 }
 
 // 添加defer 关闭
-func (s *Server) AddCloseFunc(f CloseFunc) {
-    s.closePool = append(s.closePool, f)
+func (s *Server) AddCloseFunc(f io.Closer) {
+    s.closer = append(s.closer, f)
 }
 func (s *Server) Close() {
-    for _, f :=range s.closePool{
-        f()
+    for _, f :=range s.closer{
+        f.Close()
     }
+    s.closer = nil
 }
-
+// 数据库连接池
 func (s *Server) ConnDB(){
     s.ctx = context.Background()
     // 链接MYSQL连接池
-    db.MYSQL.Conn(s.Conf.MySQLConf)
-    s.AddCloseFunc(db.MYSQL.Close)
+    db.MYSQL.Conn(s.c.MySQL)
+    s.AddCloseFunc(db.MYSQL)
     // 链接MYSQL连接池
-    mdb.MONGO.Conn(s.Conf.MongoConf)
-    s.AddCloseFunc(mdb.MONGO.Close)
+    mdb.MONGO.Conn(s.c.Mongo)
+    s.AddCloseFunc(mdb.MONGO)
     // 连接redis连接池
-    rdb.Redis.Conn(s.Conf.RedisConf)
-    s.AddCloseFunc(rdb.Redis.Close)
+    rdb.Redis.Conn(s.c.Redis)
+    s.AddCloseFunc(rdb.Redis)
     // 设置MYSQL和MONGODB缓存redis句柄
-    if s.Conf.CacheRedis != "" {
-        if r, err := rdb.Redis.Client(s.Conf.CacheRedis); err == nil {
-            db.MYSQL.SetCacheRedis(r, time.Second * time.Duration(s.Conf.CacheSec))
-            mdb.MONGO.SetCacheRedis(r, time.Second * time.Duration(s.Conf.CacheSec))
+    if s.c.CacheRedis != "" {
+        if r, err := rdb.Redis.Client(s.c.CacheRedis); err == nil {
+            db.MYSQL.SetCacheRedis(r, time.Second * time.Duration(s.c.CacheSec))
+            mdb.MONGO.SetCacheRedis(r, time.Second * time.Duration(s.c.CacheSec))
         } else {
-            util.Log.Errorln(err)
+            util.Error(err)
         }
     }
-    // 链接rabbitmq
-    rabbitmq.RabbitMq.Conn(s.Conf.RabbitMQConf)
-    s.AddCloseFunc(rabbitmq.RabbitMq.Close)
+    //// 链接rabbitmq
+    //rabbitmq.RabbitMq.Conn(s.c.RabbitMQConf)
+    //s.AddCloseFunc(rabbitmq.RabbitMq)
 }
-
 type ScriptFunc func() error
-func (s *Server) Script(f ScriptFunc){
+func (s *Server)Script(f ScriptFunc) {
     defer s.Close()
-
     // 链接数据库和MQ
     s.ConnDB()
 
@@ -96,64 +96,96 @@ func (s *Server) Script(f ScriptFunc){
     // 开始执行脚本方法
     initScriptFunc(&g, f)
 
-    util.Log.Debugln("exit", g.Run())
-
-}
-func initScriptFunc(g *group.Group, f ScriptFunc) {
-    g.Add(func() error {
-        return f()
-    }, func(err error) {
-        if err != nil {
-            util.Log.Error(err.Error())
-        }
-    })
+    util.Info("", "Exit", g.Run())
 }
 
 func (s *Server) Run() {
     defer s.Close()
 
-    logger := util.Log
     // 链接数据库和MQ
     s.ConnDB()
 
     // 链路跟踪
-    tracer, reporter := initTraceServer(s.Conf)
+    tracer, reporter := initTraceServer(s.c)
     if reporter != nil {
-        defer reporter.Close()
+       defer reporter.Close()
     }
     // 监控统计
-    calls, duration := initMetrics(s.Conf)
+    calls, duration := initMetrics(s.c)
     var (
         // 中间件
-        mdw = getMiddleware(s.Conf.LimitServer, s.Conf.BreakerServer, tracer, duration)
+        mdw = getMiddleware(s.c.LimitServer, s.c.BreakerServer, tracer)
+
         // 服务
         service = callservice.New([]callservice.Middleware{
             callservice.LoggingMiddleware(),
-            callservice.InstrumentingMiddleware(calls),
+            callservice.InstrumentingMiddleware(calls, duration),
         })
         endpoints = callendpoint.New(service).AddMiddleware(mdw)
-        httpServer = callHttp.NewServer(endpoints, s.Conf, callHttp.DefaultServerOptions(tracer))
-        grpcServer  = callGrpc.NewServer(endpoints, callGrpc.DefaultServerOptions(tracer))
+        httpServer = callHttp.NewServer(endpoints, tracer, "Call")
+        grpcServer  = callGrpc.NewServer(endpoints, tracer, "Call")
     )
 
     var g group.Group
     // 测试服务
-    initDebugServer(&g, s.Conf)
-    // http服务
-    initHttpServer(&g, s.Conf, httpServer, logger)
+    initDebugServer(&g, s.c)
+    // http(s)服务
+    initHttpServer(&g, s.c, httpServer)
     // grpc服务
-    initGrpcServer(&g, s.Conf, grpcServer, logger)
+    initGrpcServer(&g, s.c, grpcServer)
     // 优雅退出
     initShutdown(&g)
 
     // 服务发现-etcd
-    initEtcdServer(s.ctx, s.Conf)
+    initEtcdServer(s.ctx, s.c)
 
-    util.Log.Debugf("exit", g.Run())
+    util.Info("", "Exit", g.Run())
+}
+
+func initMetrics(conf *conf.Config) (*prometheus.CounterVec, *prometheus.SummaryVec){
+    calls := prometheus.NewCounterVec(
+        prometheus.CounterOpts{
+            Namespace: conf.Name,
+            Subsystem: conf.Num,
+            Name:      "count",
+            Help:      "统计请求次数.",
+        },
+        []string{"code", "method"},
+    )
+    prometheus.MustRegister(calls)
+
+    duration := prometheus.NewSummaryVec(
+        prometheus.SummaryOpts{
+            Namespace: conf.Name,
+            Subsystem: "call",
+            Name:      "request",
+            Help:      "请求持续时间（秒）",
+            Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+        },
+        []string{"success", "dns"},
+    )
+    // 开启DebugAddr 才可以访问这个地址
+    http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
+    prometheus.MustRegister(duration)
+    return calls, duration
+}
+
+// 启动脚本
+func initScriptFunc(g *group.Group, f ScriptFunc) {
+    g.Add(func() error {
+        return f()
+    }, func(err error) {
+        if err != nil {
+            util.Error(err.Error())
+        }
+    })
 }
 // 链路跟踪
-func initTraceServer(conf callConf.Config) (stdopentracing.Tracer, reporter.Reporter){
-    tracer := stdopentracing.GlobalTracer()
+func initTraceServer(conf *conf.Config) (opentracing.Tracer, reporter.Reporter){
+    if conf.ZipkinUrl == "" {
+        return nil, nil
+    }
+    tracer := opentracing.GlobalTracer()
     if conf.ZipkinUrl == "" {
         return tracer, nil
     }
@@ -161,134 +193,110 @@ func initTraceServer(conf callConf.Config) (stdopentracing.Tracer, reporter.Repo
     reporter    := zipkinhttp.NewReporter(conf.ZipkinUrl)
 
     //创建trace跟踪器
-    zEP, _ := zipkin.NewEndpoint(conf.ServerName + ":" + conf.ServerNo, "")
+    zEP, _ := zipkin.NewEndpoint(conf.Name + ":" + conf.Num, "")
     zipkinTracer, err := zipkin.NewTracer(reporter, zipkin.WithLocalEndpoint(zEP))
     if err != nil {
-        util.Log.Error(err)
+        util.Error(err)
         panic(err)
     }
     tracer = zipkinot.Wrap(zipkinTracer)
     return tracer, reporter
 }
-// 监控统计
-func initMetrics(conf callConf.Config) (*prometheus.Counter, *prometheus.Summary) {
-    calls := prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-        Namespace: conf.ServerName,
-        Subsystem: "call",
-        Name:      "count",
-        Help:      "统计请求次数.",
-    }, []string{})
-    duration := prometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
-        Namespace: conf.ServerName,
-        Subsystem: "call",
-        Name:      "request",
-        Help:      "请求持续时间（秒）",
-    }, []string{"method", "success"})
-    http.DefaultServeMux.Handle("/metrics", promhttp.Handler())
-    // 开启DebugAddr 才可以访问这个地址
-    return calls, duration
-}
+
 // 获取中间件
-func getMiddleware(limit *rate.Limiter, breakerSetting gobreaker.Settings, tracer stdopentracing.Tracer, duration *prometheus.Summary) []endpoint.Middleware{
-    return []endpoint.Middleware{
+func getMiddleware(limit *rate.Limiter, breakerSetting gobreaker.Settings, tracer opentracing.Tracer) []callendpoint.Middleware{
+    mid := []callendpoint.Middleware{
         callendpoint.LimitErroring(limit),
         callendpoint.Gobreaking(breakerSetting),
-        callendpoint.TraceServer(tracer),
         callendpoint.LoggingMiddleware(),
-        callendpoint.InstrumentingMiddleware(duration.With("method", "Call")),
     }
+    if tracer!= nil {
+        mid = append(mid, callendpoint.TraceServer(tracer))
+    }
+    return mid
 }
+
 // 初始化etcd
-func initEtcdServer(ctx context.Context, conf callConf.Config) {
-    logger := util.Log
-    if conf.HttpAddr != "" {
-        k := fmt.Sprintf("/%s/%s/%s", conf.ServerName, "http", conf.ServerNo)
-        regEtcdHttpServer(ctx, conf, logger, k, conf.HttpAddr)
-    }
-    if conf.GrpcAddr != "" {
-        k := fmt.Sprintf("/%s/%s/%s", conf.ServerName, "grpc", conf.ServerNo)
-        regEtcdHttpServer(ctx, conf, logger, k, conf.GrpcAddr)
-    }
-}
-func regEtcdHttpServer(ctx context.Context, conf callConf.Config, logger log.Logger, k string, v string){
-    //创建etcd连接
-    client, err := etcdv3.NewClient(ctx,
-        []string{conf.EtcdAddr},
-        etcdv3.ClientOptions{
-            DialTimeout: conf.EtcdTimeout,
-            DialKeepAlive: conf.EtcdKeepAlive,
-        })
-    if err != nil {
-        panic(err)
-    }
-    etcdv3.NewRegistrar(client, etcdv3.Service{
-        Key: k,
-        Value: v,
-    }, logger).Register()
-}
-
-
-// 测试服务
-func initDebugServer(g *group.Group, conf callConf.Config) {
-    logger := util.Log
-    if conf.DebugAddr == "" {
+func initEtcdServer(ctx context.Context, conf *conf.Config) {
+    if conf.ETCD == "" { // 如果没有配置，就不走etcd
         return
     }
-    debugListener, err := net.Listen("tcp", conf.DebugAddr)
+
+    etcd, err := finder.NewEtcd(ctx, conf.ETCD)
     if err != nil {
-        logger.Log("transport", "debug/HTTP", "during", "Listen", "err", err)
+        util.Error(err.Error())
+        panic(ecode.EtcdDisconnect.Error(conf.ETCD, err.Error()))
+    }
+
+    if conf.AddrHttp != "" {
+        k := fmt.Sprintf("/%s/%s/%s", conf.Name, "http", conf.Name,)
+        etcd.Register(k, conf.AddrHttp)
+    }
+    if conf.AddrGrpc != "" {
+        k := fmt.Sprintf("/%s/%s/%s", conf.Name, "grpc", conf.Name,)
+        etcd.Register(k, conf.AddrGrpc)
+    }
+}
+
+// 测试服务
+func initDebugServer(g *group.Group, conf *conf.Config) {
+    if conf.AddrDebug == "" {
+        return
+    }
+    debugListener, err := net.Listen("tcp", conf.AddrDebug)
+    if err != nil {
+        util.Error("", "transport", "debug/HTTP", "during", "Listen", "err", err)
         os.Exit(1)
     }
     g.Add(func() error {
-        logger.Log("transport", "debug/HTTP", "addr", conf.DebugAddr)
+        util.Info("", "transport", "debug/HTTP", "addr", conf.AddrDebug)
         return http.Serve(debugListener, http.DefaultServeMux)
     }, func(error) {
         debugListener.Close()
     })
 }
+
 // http服务
-func initHttpServer(g *group.Group, conf callConf.Config, httpServer http.Server, logger log.Logger) {
-    if conf.HttpAddr != "" {
+func initHttpServer(g *group.Group, conf *conf.Config, httpServer http.Server) {
+    if conf.AddrHttp != "" {
         g.Add(func() error {
-            logger.Log("transport", "HTTP", "addr", conf.HttpAddr)
-            httpServer.Addr = conf.HttpAddr
+            util.Info("","transport", "HTTP", "addr", conf.AddrHttp)
+            httpServer.Addr = conf.AddrHttp
             return httpServer.ListenAndServe()
         }, func(error) {
             httpServer.Shutdown(context.Background())
         })
     }
-    if len(conf.HttpsInfo) == 3 && conf.HttpsInfo[0]!=""{
-        if conf.HttpsInfo[1][:1] != "/" {
-            conf.HttpsInfo[1] = conf.ServerRoot + "/" + conf.HttpsInfo[1]
-        }
-        if conf.HttpsInfo[2][:1] != "/" {
-            conf.HttpsInfo[2] = conf.ServerRoot + "/" + conf.HttpsInfo[2]
-        }
-        g.Add(func() error {
-            logger.Log("transport", "HTTPS", "addr", conf.HttpsInfo[0])
-            httpServer.Addr = conf.HttpsInfo[0]
-
-            return httpServer.ListenAndServeTLS(conf.HttpsInfo[1],conf.HttpsInfo[2])
-        }, func(error) {
-            httpServer.Shutdown(context.Background())
-        })
+    if len(conf.AddrHttps) == 3 && conf.AddrHttps[0] != "" {
+       if conf.AddrHttps[1][:1] != "/" {
+           conf.AddrHttps[1] = conf.Root + "/" + conf.AddrHttps[1]
+       }
+       if conf.AddrHttps[2][:1] != "/" {
+           conf.AddrHttps[2] = conf.Root + "/" + conf.AddrHttps[2]
+       }
+       g.Add(func() error {
+           util.Info("", "transport", "HTTPS", "addr", conf.AddrHttps[0])
+           httpServer.Addr = conf.AddrHttps[0]
+           return httpServer.ListenAndServeTLS(conf.AddrHttps[1], conf.AddrHttps[2])
+       }, func(error) {
+           httpServer.Shutdown(context.Background())
+       })
     }
-
 }
 // grpc服务
-func initGrpcServer(g *group.Group, conf callConf.Config, grpcServer callpb.ServiceServer, logger log.Logger) {
-    if conf.GrpcAddr == "" {
+func initGrpcServer(g *group.Group, conf *conf.Config, grpcServer callpb.ServiceServer) {
+    if conf.AddrGrpc == "" {
         return
     }
-    grpcListener, err := net.Listen("tcp", conf.GrpcAddr)
+    grpcListener, err := net.Listen("tcp", conf.AddrGrpc)
     if err != nil {
-        logger.Log("transport", "gRPC", "during", "Listen", "err", err)
+        util.Info("", "transport", "GRPC", "during", "Listen", "err", err)
         os.Exit(1)
     }
     g.Add(func() error {
-        logger.Log("transport", "gRPC", "addr", conf.GrpcAddr)
+        util.Info("", "transport", "gRPC", "addr", conf.AddrGrpc)
 
-        baseServer := grpc.NewServer(grpc.UnaryInterceptor(kitgrpc.Interceptor))
+        baseServer :=  grpc.NewServer()
         callpb.RegisterServiceServer(baseServer, grpcServer)
         return baseServer.Serve(grpcListener)
     }, func(error) {
@@ -304,7 +312,7 @@ func initShutdown(g *group.Group) {
         signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
         select {
         case sig := <-c:
-            return fmt.Errorf("received signal %s", sig)
+            return fmt.Errorf("收到信号【%s】", sig)
         case <-cancelInterrupt:
             return nil
         }

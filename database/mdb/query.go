@@ -41,8 +41,9 @@ type queryOptions struct {
 
 // SQL query
 type Query struct {
-    Conf    conf.MongoConf
-    Conn    *mongo.Database
+    Conf    *MongoConfigs
+    ConnW    *mongo.Database
+    ConnR    *mongo.Database
     options *queryOptions
 }
 
@@ -266,7 +267,7 @@ func (q *Query)Delete() *Query{
 }
 
 // 缓存SQL
-func (q *Query)CacheSql(ctx context.Context, c conf.MongoConf, op *queryOptions) *rdb.String{
+func (q *Query)CacheSql(ctx context.Context, c MongoConf, op *queryOptions) *rdb.String{
     argByte, _ :=util.JsonEncode(op)
     cacheKey := fmt.Sprintf("%s/%s->%s", c.Dns, c.Database, string(argByte[:]))
     return &rdb.String{
@@ -307,7 +308,7 @@ func (q *Query)buildSql() (retSql string){
     if len(o.Set) >0 {
         var setArr []string
         for _, v := range o.Set {
-            setArr = append(setArr, v.Key + ":" + util.StrParse(v.Value) + ",")
+            setArr = append(setArr, v.Key + ":" + util.Str(v.Value) + ",")
         }
         retSql = retSql + " SET {" + strings.Join(setArr, ", ") + "}"
     }
@@ -334,7 +335,7 @@ func (q *Query)buildSql() (retSql string){
     if len(o.OrderBy) >0 {
         var orderArr []string
         for _, v := range o.OrderBy {
-            orderArr = append(orderArr, v.Key + ":" + util.StrParse(v.Value) + ",")
+            orderArr = append(orderArr, v.Key + ":" + util.Str(v.Value) + ",")
         }
         retSql = retSql + " ORDER BY {" + strings.Join(orderArr, ", ") + "}"
     }
@@ -353,7 +354,7 @@ func (q *Query)buildSql() (retSql string){
 // 统计配置
 func (q *Query)countOptions() *options.CountOptions{
     countOptions := &options.CountOptions{
-        MaxTime: &q.Conf.Timeout,
+        MaxTime: &q.Conf.R.Timeout,
     }
     if q.options.Skip >0 { // skip
         countOptions.SetSkip(q.options.Skip)
@@ -378,10 +379,10 @@ func (q *Query)findOptions() *options.FindOptions {
     if q.options.Limit >0 { // limit
         findOptions.SetLimit(q.options.Limit)
     }
-    if q.Conf.AllowDiskUse {
-        findOptions.SetAllowDiskUse(q.Conf.AllowDiskUse)
+    if q.Conf.R.AllowDiskUse {
+        findOptions.SetAllowDiskUse(q.Conf.R.AllowDiskUse)
     }
-    findOptions.SetMaxTime(q.Conf.Timeout)
+    findOptions.SetMaxTime(q.Conf.R.Timeout)
     return findOptions
 }
 // pipe查询配置
@@ -416,7 +417,7 @@ func (q *Query)Count() (int64, error){
         return 0, ecode.MdbCountErr.Error()
     }
     ctx     := context.Background()
-    database := q.Conn
+    database := q.ConnR
     collection := database.Collection(q.options.From)
     countOptions := q.countOptions()
     where   := bson.D{}
@@ -430,7 +431,7 @@ func (q *Query)Cache(useCache bool) *Query{
     if MONGO.CacheRedisClient != nil { // 如果配置了 缓存redis
         q.options.useCache = useCache
     } else {
-        util.Log.Infoln("没有配置缓存redis，无法使用MongoDB CACHE")
+        util.Info("没有配置缓存redis，无法使用MongoDB CACHE")
     }
     return q
 }
@@ -439,18 +440,18 @@ func (q *Query)Query(args ...interface{}) (ret *Result){
     // 链接
     var (
         ctx     = context.Background()
-    	collection *mongo.Collection
+        collection *mongo.Collection
         where   = bson.D{}
     )
     ret     = &Result{ctx: ctx}
 
     // from
     if q.options.From != "" {
-        collection = q.Conn.Collection(q.options.From)
+        collection = q.ConnR.Collection(q.options.From)
     } else if len(q.options.Update) > 0 {
-        collection = q.Conn.Collection(q.options.Update[0])
+        collection = q.ConnW.Collection(q.options.Update[0])
     } else if len(q.options.Into) > 0 {
-        collection = q.Conn.Collection(q.options.Into[0])
+        collection = q.ConnW.Collection(q.options.Into[0])
     } else { // 没有指定 Collection
         ret.Err = ecode.MdbCollectionIsNil.Error()
         return
@@ -465,19 +466,19 @@ func (q *Query)Query(args ...interface{}) (ret *Result){
     cacheGet := false
     cacheKeyName := ""
     defer func() {
-        if !util.Log.ShowDebug {
+        if conf.Conf.LogLevel != "debug" {
             return
         }
         driver := "MONGO"
         if cacheGet {
             driver = "REDIS缓存-MONGO"
         }
-        util.Log.Logger.With("driver", driver, "cacheName", cacheKeyName,
-            "use", time.Since(t) ).Debug(q.buildSql())
+        util.Debug(q.buildSql(), "driver", driver, "cacheName", cacheKeyName,
+            "use", time.Since(t) )
     }()
 
     if q.options.useCache { // 使用缓存
-        cacheKey := q.CacheSql(ctx, q.Conf, q.options)
+        cacheKey := q.CacheSql(ctx, q.Conf.R, q.options)
         cacheKeyName = cacheKey.Name
         ret.useCache = true
         ret.cacheKey = cacheKey
@@ -522,10 +523,10 @@ func (q *Query)Query(args ...interface{}) (ret *Result){
     } else {
         pipeline := q.pipeline()
         opts := options.Aggregate()
-        if q.Conf.AllowDiskUse {
-            opts.SetAllowDiskUse(q.Conf.AllowDiskUse)
+        if q.Conf.R.AllowDiskUse {
+            opts.SetAllowDiskUse(q.Conf.R.AllowDiskUse)
         }
-        opts.SetMaxTime(q.Conf.Timeout)
+        opts.SetMaxTime(q.Conf.R.Timeout)
         ret.Cursor, ret.Err = collection.Aggregate(ctx, pipeline, opts)
     }
 

@@ -1,0 +1,49 @@
+{
+  "Server": {
+    "Name": "pg",
+    "Num": "01",
+    "Root": "",
+    "Env": "dev",
+
+    "LogDir": "",
+    "LogLevel": "debug",
+
+    "AddrDebug": "172.16.12.23:8081",
+    "AddrHttp":  "172.16.12.23:80",
+    "AddrHttps": ["172.16.12.23:443", "ssl/local.com.crt", "ssl/local.com.key"],
+    "AddrGrpc":  "172.16.12.23:8082",
+
+    "ETCD":   "etcd://:@tcp(127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30",
+    "ZipkinUrl": "http://localhost:9411/api/v2/spans",
+
+    "CacheRedis": "demo",
+    "CacheSec":    60
+  },
+  "MySQL": {
+    "demo": [
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30",
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"
+    ],
+    "test": [
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"
+    ]
+  },
+  "Redis": {
+    "demo": [
+      "redis://:@tcp(localhost:6379)/0"
+    ]
+  },
+  "Mongo": {
+    "demo": [
+      "mongodb://admin:root@tpc(localhost:27017)/demo?Timeout=3&AllowDiskUse=0",
+      "mongodb://admin:root@tpc(localhost:27017)/demo?Timeout=3&AllowDiskUse=0"
+    ]
+  },
+  "KAFKA": {
+    "canal_product": {
+      "Server": ["172.16.12.23:9092"],
+      "Topic": ["t_product_test"],
+      "GroupId": "product"
+    }
+  }
+}

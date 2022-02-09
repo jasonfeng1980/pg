@@ -2,23 +2,21 @@ package mdb
 
 import (
     "github.com/jasonfeng1980/pg"
-    "github.com/jasonfeng1980/pg/conf"
     "github.com/jasonfeng1980/pg/util"
     "go.mongodb.org/mongo-driver/bson"
     "testing"
 )
 
-var mongoConf = make(map[string]conf.MongoConf)
 var (
-	user *Query
-	pingErr error
+	mongoConf = map[string][]string{
+        "USER": []string{
+            "mongodb://admin:root@tpc(localhost:27017)/demo?Timeout=3&AllowDiskUse=0",
+        },
+    }
+    user *Query
+    pingErr error
 )
 func TestMain(m *testing.M) {
-    mongoConf["USER"] = conf.MongoConf{
-        Dns: "mongodb://admin:root@localhost:27017",
-        Timeout: 3,
-        Database: "user",
-    }
 
     // 链接MYSQL连接池
     MONGO.Conn(mongoConf)
@@ -26,7 +24,7 @@ func TestMain(m *testing.M) {
 
     user, pingErr = MONGO.Get("USER")
     if pingErr != nil {
-        util.Log.Error("无法链接mongo")
+        util.Error("无法链接mongo")
     }
     m.Run()
 }
@@ -44,7 +42,7 @@ func TestQuery_Select(t *testing.T) {
         //OrderBy("info.sex, info.name asc").
         //Limit(1, 5).
         Count()
-    util.Log.Debugln(num, err)
+    util.Debug(num, "err", err)
 
     ret, err := user.Select().
         From("user").
@@ -62,7 +60,7 @@ func TestQuery_Select(t *testing.T) {
         Array()
     for k, v := range ret {
         info := v["info"].(map[string]interface{})
-        util.Log.Debugln(k, "token:", v["token"], "sex:", info["sex"], "name:", info["name"])
+        util.Debug(k, "token:", v["token"], "sex:", info["sex"], "name:", info["name"])
     }
 
 
@@ -85,7 +83,7 @@ func TestQuery_GroupBy(t *testing.T) {
         t.Error(err)
     }
     for k, v := range ret {
-        util.Log.Debugln(k, v)
+        util.Debug(k, "v", v)
     }
 }
 
@@ -117,7 +115,7 @@ func TestQuery_Insert(t *testing.T) {
         Into("user").
         Query().
         LastInsertId()
-    util.Log.Debugln(ret, err)
+    util.Debug(ret, "err", err)
 
 }
 
@@ -132,7 +130,7 @@ func TestQuery_Update(t *testing.T) {
         //Upsert(true).
         Query().
         RowsAffected()
-    util.Log.Debugln(ret, err)
+    util.Debug(ret, "err", err)
 }
 
 func TestQuery_Delete(t *testing.T) {
@@ -142,5 +140,5 @@ func TestQuery_Delete(t *testing.T) {
         One(true).
         Query().
         RowsAffected()
-    util.Log.Debugln(ret, err)
+    util.Debug(ret, "err", err)
 }

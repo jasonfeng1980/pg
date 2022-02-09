@@ -14,13 +14,16 @@ type Orm struct {
     Pk string             // 主键
     Fields []string       // 其他字段
     Filter map[string]*FilterConf // 所有字段的过滤条件
-    BeforeInsert map[string]ChangeFunc   // 插入前修改
-    BeforeUpdate map[string]ChangeFunc   // 更新前修改
+    BeforeInsert map[string]BeforeFunc   // 插入前修改   插入信息, 关注的字段
+    AfterInsert map[string]AfterFunc   // 插入后修改    插入信息，自增ID, 关注字段
+    BeforeUpdate map[string]BeforeFunc   // 更新前修改   更新信息， 关注字段
+    AfterUpdate map[string]AfterFunc   // 更新前修改    更新信息，更新行数, 关注字段
 }
 
-type ChangeFunc  func(m map[string]interface{}, name string)
+type BeforeFunc  func(insertOrUpdateParams map[string]interface{}, watchField string)
+type AfterFunc  func(insertOrUpdateParams map[string]interface{}, nums int64, watchField string)
 
-func ChangeNow(m map[string]interface{}, name string){
+func ChangeNow(m map[string]interface{}, name string) {
     if _, ok := m[name]; !ok {
         m[name] = time.Now().Format("2006-01-02 15:04:05")
     }
@@ -34,12 +37,28 @@ func (c *Orm)beforeInsert(m map[string]interface{}){
         }
     }
 }
+// 插入之后
+func (c *Orm)afterInsert(m map[string]interface{}, nums int64){
+    if c.AfterInsert != nil {
+        for name, f := range c.AfterInsert {
+            f(m, nums, name)
+        }
+    }
+}
 
 // 更新之前
 func (c *Orm)beforeUpdate(m map[string]interface{}){
     if c.BeforeUpdate != nil {
         for name, f := range c.BeforeUpdate {
             f(m, name)
+        }
+    }
+}
+// 更新之后
+func (c *Orm)afterUpdate(m map[string]interface{}, nums int64){
+    if c.AfterUpdate != nil {
+        for name, f := range c.AfterUpdate {
+            f(m, nums, name)
         }
     }
 }
@@ -89,6 +108,10 @@ func (c *Orm) Create(args interface{}) (int64, error){
         Into(c.Name).
         Query().
         LastInsertId()
+
+    // 插入之后
+    c.afterInsert(argMap, insertId)
+
     return insertId, nil
 }
 
@@ -145,13 +168,13 @@ func (c *Orm) Line(pkId int64)  *ormLine{
 }
 
 // 删除
-func (obj *ormLine) Remove() int64{
-    lines, _ := obj.Delete().
+func (obj *ormLine) Remove() (int64, error){
+    lines, err := obj.Delete().
         From(obj.Name).
         Where(obj.Pk + "=?", obj.pkId).
         Query().
         RowsAffected()
-    return lines
+    return lines, err
 }
 
 // 编辑
@@ -159,17 +182,19 @@ func (obj *ormLine) Edit(argMap map[string]interface{}) (int64, error){
     obj.beforeUpdate(argMap)
 
     // 筛检数据->检测格式->必填
-    dataJson, err := obj.Check(argMap, false)
+    dataList, err := obj.Check(argMap, false)
     if err !=nil {
         return 0, err
     }
 
-    ret, _ := obj.Update(obj.Name).
-        Set(dataJson[0]).
+    ret, err := obj.Update(obj.Name).
+        Set(dataList[0]).
         Where(obj.Pk +"=?", obj.pkId).
         Query().
         RowsAffected()
-    return ret, nil
+
+    obj.afterUpdate(argMap, ret)
+    return ret, err
 }
 
 func (obj *ormLine) Cache(c bool) *ormLine{
@@ -177,18 +202,21 @@ func (obj *ormLine) Cache(c bool) *ormLine{
     return obj
 }
 
-func (obj *ormLine) Info() map[string]interface{}{
-    ret, _ := obj.Select("*").
+func (obj *ormLine) Info() (map[string]interface{}, error){
+    ret, err := obj.Select("*").
         From(obj.Name).
         Where(obj.Pk + "=?", obj.pkId).
         Limit(0,1).
         Cache(obj.useCache).
         Query().
         Array()
-    if len(ret) == 0 {
-        return nil
+    if err != nil {
+        return nil, err
     }
-    return ret[0]
+    if len(ret) == 0 {
+        return nil, nil
+    }
+    return ret[0], nil
 }
 
 
@@ -226,7 +254,7 @@ func OrmInit(confName, appName string, ormPath string){
     for _, line:= range rs {
         tableArr = append(tableArr, line["Tables_in_" + dbName].(string))
     }
-    util.Log.Infoln("获取表结构", tableArr)
+    util.Info("获取表结构", "tableArr", tableArr)
 
     // 循环表获取各个字段
     for _, table := range tableArr {
@@ -318,12 +346,12 @@ func {Table}() *{Table.Name}{
 `
     var ormTplFilter = "  ret.Filter[\"{Table.Field}\"] = f(\"{Filter.mysqlType}\", {Filter.unsigned}, {Filter.isNeed})\n"
 
-    TableFilter := "  ret.BeforeInsert = make(map[string]db.ChangeFunc)\n  ret.BeforeUpdate = make(map[string]db.ChangeFunc)\n\n"
+    TableFilter := "  ret.BeforeInsert = make(map[string]db.BeforeFunc)\n  ret.AfterInsert = make(map[string]db.AfterFunc)\n  ret.BeforeUpdate = make(map[string]db.BeforeFunc)\n  ret.AfterUpdate = make(map[string]db.AfterFunc)\n\n"
 
     for field, filterObj := range table.Field{
         filterTpl := ormTplFilter
-        unsigned, _ := util.Str(filterObj.Unsigned)
-        isNeed, _ := util.Str(filterObj.IsNeed)
+        unsigned, _ := util.StrParse(filterObj.Unsigned)
+        isNeed, _ := util.StrParse(filterObj.IsNeed)
         filterTpl =  strings.Replace(filterTpl, "{Table.Field}", field, -1)
         filterTpl =  strings.Replace(filterTpl, "{Filter.mysqlType}", filterObj.MysqlType, -1)
         filterTpl =  strings.Replace(filterTpl, "{Filter.unsigned}", unsigned, -1)
@@ -350,14 +378,14 @@ func {Table}() *{Table.Name}{
     ret =  strings.Replace(ret, "{Table.Filter}", TableFilter, -1)
 
     ormPath = util.FileRealPath(ormPath)
-    dir := ormPath + "/" + appName + "_tmp/"
+    dir := ormPath + "/" + appName + "/"
     fileName := table.Name + ".go"
 
     if err := util.FileWrite(dir, fileName, ret); err!=nil{
-        util.Log.Infoln("创建ORM文件：", dir, fileName , "  失败! -- Error")
-        util.Log.Infoln(err.Error())
+        util.Logs("创建ORM文件：", dir, fileName , "  失败! -- Error")
+        util.Logs(err.Error())
     } else {
-        util.Log.Infoln("创建ORM文件：", dir, fileName , "  成功! -- OK")
+        util.Logs("创建ORM文件：", dir, fileName , "  成功! -- OK")
     }
 }
 

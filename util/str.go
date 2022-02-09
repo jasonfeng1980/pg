@@ -12,11 +12,11 @@ import (
 
 
 // 转换成字符串
-func StrParse(arg interface{}) string {
+func Str(arg interface{}) string {
     return fmt.Sprint(arg)
 }
 // 数字|bool|字符串 =>字符串 其他错误
-func Str(arg interface{})(ret string, err error){
+func StrParse(arg interface{})(ret string, err error){
     if arg == nil {
         return "", nil
     }
@@ -47,7 +47,7 @@ func Str(arg interface{})(ret string, err error){
 func StrListInt(list []int64) []string {
     box := make([]string, len(list))
     for k, v := range list {
-        box[k] = StrParse(v)
+        box[k] = Str(v)
     }
     return box
 }
@@ -74,6 +74,12 @@ func StrUFirstForSplit(str string, spe string) string{
     }
     return ret
 }
+// 骆驼命名法
+// e.g.  hello_world   ==>  helloWorld
+func StrSecFirstForSplit(str string, spe string) string{
+    str = StrUFirstForSplit(str, spe)
+    return strings.ToLower(str[0:1]) + str[1:]
+}
 
 // 获取字符串格式，中文算一个
 // "中国2" => 3
@@ -93,7 +99,7 @@ func StrMd5(str string) string  {
 func StrJoinFromInt64(iList []int64, sep string) string{
     strBox := make([]string, len(iList))
     for k, v := range iList {
-        strBox[k] = StrParse(v)
+        strBox[k] = Str(v)
     }
     return strings.Join(strBox, sep)
 }

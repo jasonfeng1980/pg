@@ -10,6 +10,14 @@ import (
 func InterfaceType(arg interface{}) string{
     return reflect.Indirect(reflect.ValueOf(arg)).Type().String()
 }
+// interface{}是不是map
+func InterfaceIsMap(arg interface{}) bool{
+    return reflect.ValueOf(arg).Kind() == reflect.Map
+}
+// interface{}是不是切片
+func InterfaceIsSlice(arg interface{}) bool{
+    return reflect.ValueOf(arg).Kind() == reflect.Slice
+}
 
 // interface => []map[string]interface
 // []interface{} | []map[string]interface{} |map[string]interface{}

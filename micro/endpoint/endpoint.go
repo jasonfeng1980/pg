@@ -2,13 +2,14 @@ package endpoint
 
 import (
     "context"
-    "github.com/go-kit/kit/endpoint"
     "github.com/jasonfeng1980/pg/ecode"
     "github.com/jasonfeng1980/pg/micro/service"
 )
 
+type Endpoint func(ctx context.Context, request interface{}) (response interface{}, err error)
+type Middleware func(Endpoint) Endpoint
 
-func New(s service.Service) Set {
+func New(s service.Service) MicroEndpoint {
     ept := func(ctx context.Context, request interface{}) (interface{}, error) {
         req := request.(CallRequest)
         data, code, msg := s.Call(ctx, req.Dns, req.Params)
@@ -18,43 +19,36 @@ func New(s service.Service) Set {
             Msg: msg,
         }, nil
     }
-    return Set{CallEndpoint: ept}
+    return MicroEndpoint{Endpoint: ept}
 }
 
-type Set struct {
-    CallEndpoint endpoint.Endpoint
+type MicroEndpoint struct {
+    Endpoint Endpoint
 }
 
 // 实现 service.Service 接口
-func (s Set) Call(ctx context.Context, dns string, params map[string]interface{}) (data interface{}, code int64, msg string) {
+func (s MicroEndpoint) Call(ctx context.Context, dns string, params map[string]interface{}) (data interface{}, code int64, msg string) {
     request := CallRequest{
         Dns: dns,
         Params: params,
     }
-    resp, err := s.CallEndpoint(ctx, request)
+    resp, err := s.Endpoint(ctx, request)
     if err != nil {
         _, msg := ecode.ReadError(err)
         return ecode.CallServerPanic.Parse(dns, msg)
     }
-    //return resp.(map[string]interface{})
     r := resp.(CallResponse)
     return r.Data, r.Code, r.Msg
 
-
-    //return map[string]interface{}{
-    //   "data": r.Data,
-    //   "msg": r.Msg,
-    //   "code": r.Code,
-    //}
 }
 
-func (s Set) AddMiddleware(mdw []endpoint.Middleware) Set {
+func (s MicroEndpoint) AddMiddleware(mdw []Middleware) MicroEndpoint {
     // 循环添加中间件
     for _, m := range mdw {
         if m == nil {
             continue
         }
-        s.CallEndpoint = m(s.CallEndpoint)
+        s.Endpoint = m(s.Endpoint)
     }
     return s
 }

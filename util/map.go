@@ -1,6 +1,10 @@
 package util
 
-import "github.com/jasonfeng1980/pg/ecode"
+import (
+    "github.com/jasonfeng1980/pg/ecode"
+    "regexp"
+    "strings"
+)
 
 type M map[string]interface{}
 
@@ -60,12 +64,58 @@ func MapKeys(m interface{}) (keys []string) {
     return
 }
 
-// map interface变字符串
-// map[string]interface => map[string]string
-func MapInterfaceToString(m map[string]interface{})  map[string]string{
-    ret := make(map[string]string, len(m))
-    for k, v := range m {
-        ret[k] = StrParse(v)
+func MapStringToString(m map[string]string) string{
+    ret := ""
+    for _, v := range m {
+        ret += v
     }
     return ret
+}
+
+// map interface变字符串
+// map[string]interface => map[string]string
+func MapInterfaceToMapString(m map[string]interface{})  map[string]string{
+    ret := make(map[string]string, len(m))
+    for k, v := range m {
+        ret[k] = Str(v)
+    }
+    return ret
+}
+
+// 将url的query 转换成 map[string]string
+func MapFromUrlQuery(q string) map[interface{}]interface{}{
+    ret := make(map[interface{}]interface{})
+    for _, v := range strings.Split(q, "&") {
+        param := strings.SplitN(v, "=", 2)
+        if len(param) != 2 {
+            continue
+        }
+        ret[param[0]] = param[1]
+    }
+    return ret
+}
+
+// 将DNS转换成  map[string]interface{}
+// DNS格式为 driver://[user]:[password]@network(host:port)/[dbname][?param1=value1&paramN=valueN]
+func MapFromDns(dns string) (*Param, error) {
+    reg := regexp.MustCompile(`^(\w+):\/\/(.*):(.*)@(\w+)\((.+):(\d+)\)\/([^?]*)\??(.*)$`)
+    m := reg.FindAllStringSubmatch(dns, 1)
+    if len(m)== 0 {
+        return nil, ecode.UtilWrongDns.Error()
+    }
+    params := MapFromUrlQuery(m[0][8])
+    ret := map[string]interface{}{
+        "driver": m[0][1],
+        "user": m[0][2],
+        "password": m[0][3],
+        "network": m[0][4],
+        "host": m[0][5],
+        "port": m[0][6],
+        "dbname": m[0][7],
+        "hostList": strings.Split(m[0][5] + ":" + m[0][6], ","),
+        "params": params,
+    }
+    return &Param{
+        Box: ret,
+    }, nil
 }

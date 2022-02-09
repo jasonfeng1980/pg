@@ -46,13 +46,16 @@ type queryOptions struct {
     forUpdate bool    // FOR UPDATE
     tx     *sql.Tx   // 事务句柄
     useCache bool    // 使用缓存
+    lastSql []interface{}  // 最后的sql
 }
 
 // SQL query
 type Query struct {
     options *queryOptions
+    forceMaster bool
     db *Conn
-    tx *sql.Tx
+    Tx *sql.Tx
+    xid string
 }
 
 //"$gt", "$gte", "$lt", "lte", "$ne", "$in", "$nin"
@@ -62,6 +65,7 @@ var whereMap = map[string]string{
     "$lt":  "<",
     "lte":  ">=",
     "$ne":  "!=",
+    "$e":  "=",
     "$in":  "IN",
     "$nin": "NOT IN",
 }
@@ -74,18 +78,89 @@ func (q *Query)Clear(){
     }
 }
 
+// 获取最后的SQL
+func (q *Query)LastSql() []interface{}{
+    return q.options.lastSql
+}
+
+// 强制使用主库
+func (q *Query)ForceMaster(b bool){
+    q.forceMaster = b
+}
+
+// 开始全局事务 生成XID
+var xaCount = 0
+func (q *Query)Xid() string{
+    xaCount++
+    return fmt.Sprintf("%s-%s-%s-%d-%d",
+        conf.Conf.Name,
+        conf.Conf.Num,
+        q.db.Conf.W.Name,
+        time.Now().UnixNano(),
+        xaCount)
+}
+func (q *Query)XA(xid string) *Query{
+    q.Clear()
+    return &Query{
+        options: q.options,
+        db: q.db,
+        xid: xid,
+        forceMaster: true,
+    }
+}
+
+// xa start xid
+func (q *Query)XaStart() error{
+    _, err := q.db.Writer.Exec("XA START '" + q.xid + "'")
+    return err
+}
+// xa end xid
+func (q *Query)XaEnd() error{
+    _, err := q.db.Writer.Exec("XA END '" + q.xid + "'")
+    return err
+}
+// xa end xid
+func (q *Query)XaPrepare() error{
+    _, err := q.db.Writer.Exec("XA PREPARE '" + q.xid + "'")
+    return err
+}
+// xa commit xid
+func (q *Query)XaCommit() error{
+    _, err := q.db.Writer.Exec("XA COMMIT '" + q.xid + "'")
+    return err
+}
+// xa rollback xid
+func (q *Query)XaRollback() error{
+    _, err := q.db.Writer.Exec("XA ROLLBACK '" + q.xid + "'")
+    return err
+}
+// xa recover
+func (q *Query)XaRecover() ([]map[string]interface{}, error){
+    return q.Query("XA RECOVER").Array()
+}
+
 // 查询
-func (q *Query)Select(fields string)  *Query{
+func (q *Query)Select(fields interface{})  *Query{
     // 初始化option
     q.Clear()
+
     var selectOptions []string
-    if fields == "" {
-        fields = "*"
-    }
-    // 去除fields之间的空格，变成数组
-    var arr = strings.Split(fields, ",")
-    for _, v := range arr {
-        selectOptions = append(selectOptions, strings.Trim(v, " "))
+
+    switch fields.(type) {
+    case string:
+        fieldStr := fields.(string)
+        if fieldStr == "" {
+            fieldStr = "*"
+        }
+        // 去除fields之间的空格，变成数组
+        var arr = strings.Split(fieldStr, ",")
+        for _, v := range arr {
+            selectOptions = append(selectOptions, strings.Trim(v, " "))
+        }
+    case []string:
+        selectOptions = fields.([]string)
+    case []interface{}:
+        selectOptions = util.ListInterfaceToStr(fields.([]interface{}))
     }
     q.options.selects = selectOptions
     return q
@@ -142,19 +217,26 @@ func (q *Query)buildWhereSql(where interface{}) (str string) {
 // where条件
 func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
     var whereSql string
+
     switch where.(type) {
     case string:
         whereSql = where.(string)
-        whereSql, args = q.addWhereSql("", whereSql, args[0])
+        if len(args) == 1 {
+            switch true {
+            case util.InterfaceIsMap(args[0]):
+                whereSql, args = q.addWhereSql("", whereSql, args[0])
+            case util.InterfaceIsSlice(args[0]):
+                whereSql, args = q.addWhereSql("", whereSql, util.M{"$in": args[0]})
+            case strings.Index(whereSql, "?") == -1:
+                whereSql, args = q.addWhereSql("", whereSql, util.M{"$e": args[0]})
+            default:
+            }
+        } else if strings.Index(whereSql, "?") == -1 {
+            whereSql, args = q.addWhereSql("", whereSql, util.M{"$in": args})
+        }
     case map[string]interface{}:
         for k, v := range where.(map[string]interface{}) {
-            //if whereSql == "" {
-            //    whereSql = fmt.Sprintf("%s=? ", k)
-            //} else {
-            //    whereSql = fmt.Sprintf("%s and %s=? ", whereSql, k)
-            //}
             whereSql, args = q.addWhereSql(whereSql, k, v)
-            args = append(args, v)
         }
     default:
         mList := q.toList(where)
@@ -172,17 +254,18 @@ func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
 
 func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w string, argV []interface{}){
     midStr := "="
-    key  = fmt.Sprintf("%s%s? ", key, midStr)
+    sql := fmt.Sprintf("%s%s? ", key, midStr)
+
     if len(args) == 1 {
         h := reflect.ValueOf(args[0])
         if h.Kind() == reflect.Map {// 如果是map
             keyH := h.MapKeys()[0]
             hKey := strings.ToLower(keyH.String())
             switch hKey {
-            case "$gt", "$gte", "$lt", "lte", "$ne":
+            case "$gt", "$gte", "$lt", "lte", "$ne", "$e":
                 midStr = whereMap[hKey]
                 argV = append(argV, h.MapIndex(keyH).Interface())
-                key  = fmt.Sprintf("%s%s? ", key, midStr)
+                sql  = fmt.Sprintf("%s%s? ", key, midStr)
             case "$in", "$nin":
                 len := 1
                 var wArg  []string
@@ -198,7 +281,7 @@ func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w stri
                     }
                 }
                 midStr = whereMap[hKey]
-                key = fmt.Sprintf("%s %s (%s)", key, midStr, strings.Join(wArg, ","))
+                sql = fmt.Sprintf("%s %s (%s)", key, midStr, strings.Join(wArg, ","))
             }
         }
     }
@@ -207,9 +290,9 @@ func (q *Query)addWhereSql(base string, key string, args ...interface{}) (w stri
     }
 
     if base == "" {
-        w = key
+        w = sql
     } else {
-        w = fmt.Sprintf("%s and %s ", base, key)
+        w = fmt.Sprintf("%s and %s ", base, sql)
     }
     return
 }
@@ -344,14 +427,17 @@ func (q *Query)Delete() *Query{
     return q
 }
 
-// 开始事务
+// 复用事务句柄
+func (q *Query)UseTx(tx *sql.Tx){
+    q.Tx = tx
+    q.forceMaster = true
+}
+// 开始普通事务
 func (q *Query)StartTransaction() *Query{
     if tx, err :=q.db.Writer.Begin(); err==nil {
-        return &Query{
-            options: q.options,
-            db: q.db,
-            tx: tx,
-        }
+        q.Tx = tx
+        q.forceMaster = true
+        return q
     } else {
         panic("开启事务失败")
     }
@@ -359,15 +445,17 @@ func (q *Query)StartTransaction() *Query{
 
 // 提交事务
 func (q *Query)Commit() error{
-    err :=q.tx.Commit()
-    q.tx = nil
+    err :=q.Tx.Commit()
+    q.Tx = nil
+    q.forceMaster = false
     return err
 }
 
 // 回滚
 func (q *Query)Rollback() error{
-    err := q.tx.Rollback()
-    q.tx = nil
+    err := q.Tx.Rollback()
+    q.Tx = nil
+    q.forceMaster = false
     return err
 }
 
@@ -381,9 +469,13 @@ func (q *Query)Cache(useCache bool) *Query{
     if MYSQL.CacheRedisClient != nil { // 如果配置了 缓存redis
         q.options.useCache = useCache
     } else {
-        util.Log.Infoln("没有配置缓存redis，无法使用MYSQL CACHE")
+        util.Info("没有配置缓存redis，无法使用MYSQL CACHE")
     }
     return q
+}
+
+func (q *Query)Run(args ...interface{}) *Result{
+    return q.Query(args...)
 }
 
 // 查询
@@ -400,25 +492,31 @@ func (q *Query)Query(args ...interface{}) *Result{
     default:
         query = args[0].(string)
         args = args[1:]
+        argLen = 1
     }
 
     t := time.Now()
     cacheGet := false
     cacheKeyName := ""
     defer func() {
-        if !util.Log.ShowDebug {
+        if conf.Conf.LogLevel != "debug" {
             return
         }
         driver := "MYSQL"
         if cacheGet {
             driver = "REDIS缓存-MYSQL"
         }
-        util.Log.Logger.With("driver", driver, "args", fmt.Sprint(args),
-            "cacheName", cacheKeyName, "use", time.Since(t) ).Debug(query)
+        util.Debug(query,"driver", driver, "args", fmt.Sprint(args),
+            "cacheName", cacheKeyName, "use", time.Since(t).String() )
     }()
 
+    if q.options == nil {
+        q.options = &queryOptions{}
+    }
+    q.options.lastSql = []interface{}{query, args}
+
     if argLen == 1{
-        return q.execForArray(query)
+        return q.execForArray(query, args...)
     } else if len(q.options.selects)>0 {
         if q.options.useCache { // 使用缓存
             cacheKey := q.CacheSql(context.Background(), q.db.Conf.W, query, args)
@@ -448,7 +546,7 @@ func (q *Query)Query(args ...interface{}) *Result{
 }
 
 // 缓存SQL
-func (q *Query)CacheSql(ctx context.Context, c conf.MysqlConf, sql string, args []interface{}) *rdb.String{
+func (q *Query)CacheSql(ctx context.Context, c MysqlConf, sql string, args []interface{}) *rdb.String{
     argByte, _ :=util.JsonEncode(args)
     argStr := string(argByte[:])
     cacheKey := fmt.Sprintf("%s:%d/%s->%s<-%s", c.Host, c.Port, c.Database, sql, argStr)
@@ -553,9 +651,7 @@ func (q *Query)buildJoin() (joinSql string){
 }
 
 func (q *Query)appendArgs(args []interface{}, addArgs []interface{}) []interface{} {
-    //for _, v := range  addArgs {
     args = append(args, addArgs...)
-    //}
     return args
 }
 
@@ -572,10 +668,10 @@ func (q *Query) execForLineNum(query string, args ...interface{}) *Result {
         err error
         res  sql.Result
     )
-    if q.tx == nil { // SQL
+    if q.Tx == nil { // SQL
         handle, err = db.Prepare(query)
     } else { // 事务
-        handle, err = q.tx.Prepare(query)
+        handle, err = q.Tx.Prepare(query)
     }
 
     useCache := false
@@ -586,7 +682,10 @@ func (q *Query) execForLineNum(query string, args ...interface{}) *Result {
     if err ==nil {
         res, err = handle.Exec(args...)
     }
-    defer handle.Close()
+    if handle != nil {
+        defer handle.Close()
+    }
+
 
     return &Result{
         useCache: useCache,
@@ -601,12 +700,9 @@ func (q *Query) execForLineNum(query string, args ...interface{}) *Result {
 // 获取数组
 func (q *Query) execForArray(query string, args ...interface{}) *Result{
     db := q.db.Reader
-    if q.options !=nil && q.options.forUpdate{
-        db = q.db.Writer
-    }
 
-    if dbErr := db.Ping(); nil != dbErr {
-        panic("链接数据库失败: " + dbErr.Error())
+    if q.forceMaster || (q.options !=nil && q.options.forUpdate) {
+        db = q.db.Writer
     }
 
     rows, err := db.Query(query, args...)
@@ -624,8 +720,6 @@ func (q *Query) execForArray(query string, args ...interface{}) *Result{
         QueryResult: rows,
         Err: err,
     }
-
-    //return result
 }
 
 

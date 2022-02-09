@@ -1,0 +1,38 @@
+{
+  "Server": {
+    "Name": "demo",
+    "Num": "02",
+    "Root": "",
+    "Env": "dev",
+
+    "LogDir": "",
+    "LogLevel": "info",
+
+    "AddrDebug": ":8181",
+    "AddrHttp":  ":81",
+    "AddrHttps": [":8443", "ssl/local.com.crt", "ssl/local.com.key"],
+    "AddrGrpc":  ":8182",
+
+    "ETCD":   "etcd://:@tcp(127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30",
+    "ZipkinUrl": "http://localhost:9411/api/v2/spans",
+
+    "CacheRedis": "demo",
+    "CacheSec":    60
+  },
+  "MySQL": {
+    "demo": [
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30",
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"
+    ],
+    "test": [
+      "mysql://root:@tcp(localhost:3306)/demo?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"
+    ]
+  },
+  "KAFKA": {
+    "canal_product": {
+      "Server": ["172.16.12.23:9092"],
+      "Topic": ["t_product_test"],
+      "GroupId": "product"
+    }
+  }
+}
