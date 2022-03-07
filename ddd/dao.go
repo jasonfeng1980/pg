@@ -3,7 +3,6 @@ package ddd
 import (
     "context"
     "database/sql"
-    "errors"
     "github.com/jasonfeng1980/pg"
     "github.com/jasonfeng1980/pg/database/db"
     "github.com/jasonfeng1980/pg/ecode"
@@ -25,9 +24,10 @@ type DataMap struct {
 
 type Table struct {
     DBName          string
-    TableName      string
-    Pk        string
-    FieldArr  []string
+    TableName       string
+    Pk              string
+    FieldArr        []string
+    NeedFieldArr    []string
 }
 
 type Field struct {
@@ -40,7 +40,7 @@ type Field struct {
 func (f *Field)Check(arg interface{}) error{
     ok :=pg.Filter.MySQL(f.MysqlType, f.Unsigned, f.Need).Check(arg)
     if  !ok{
-        return errors.New("验证失败")
+        return ecode.DaoCheckErr.Error(f.FieldName, f.MysqlType, arg)
     }
     return nil
 }
@@ -72,26 +72,25 @@ func (o *DAO) HadField(fieldName string) bool{
     return util.ListHave(o.DatabaseMap.TableMap[o.TableName].FieldArr, fieldName)
 }
 // 验证必填
-func (o *DAO) CheckParams(needFieldNameList ...[]string) (err error) {
+func (o *DAO) CheckParams(needFieldNameList ...string) (err error) {
     var misList []string
     // 指定了必填字段
-    if len(needFieldNameList) == 1{
+    if len(needFieldNameList) > 0{
         // 循环判断所有的need
-        for _, fieldName := range  needFieldNameList[0] {
-            if !o.HadField(fieldName){
+        for _, fieldName := range  needFieldNameList {
+            if o.Params.Get(fieldName) == nil {
                 misList = append(misList, fieldName)
             }
         }
-        if len(misList) >0 {
-            return ecode.DaoMissNeedField.Error(o.TableName, util.ListStringJoin(misList, ","))
+    }
+
+    // 数据库要求必填的验证
+    for _,fieldName := range o.DatabaseMap.TableMap[o.TableName].NeedFieldArr{
+        if o.Params.Get(fieldName) == nil {
+            misList = append(misList, fieldName)
         }
     }
-    // 用系统默认的必填字段验证
-    for _,v := range o.DatabaseMap.FieldMap{
-        if v.Need && !o.HadField(v.FieldName){ // 要求必填，但没有该字段
-            misList = append(misList, v.FieldName)
-        }
-    }
+
     if len(misList) >0 {
         return ecode.DaoMissNeedField.Error(o.TableName, util.ListStringJoin(misList, ","))
     }
@@ -123,9 +122,9 @@ func (o *DAO) SetMany(params map[string]interface{}) (errList []error){
         if util.ListHave(o.DatabaseMap.TableMap[o.TableName].FieldArr, k) {
             // 检验
             if err := o.DatabaseMap.FieldMap[k].Check(v);err != nil {
-                o.Params.Box[k] = v
-            } else {
                 errList = append(errList, err)
+            } else {
+                o.Params.Box[k] = v
             }
         }
     }
@@ -133,7 +132,7 @@ func (o *DAO) SetMany(params map[string]interface{}) (errList []error){
 }
 // 新增
 func (o *DAO) Create() (int64, error){
-    return o.Conn().Insert(o.Params.Box).Into(o.TableName).Query().RowsAffected()
+    return o.Conn().Insert(o.Params.Box).Into(o.TableName).Query().LastInsertId()
 }
 
 // 转换成DO

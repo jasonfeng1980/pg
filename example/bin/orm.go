@@ -41,7 +41,8 @@ func main(){
     }
 
     srv := pg.Server(context.Background())
-    srv.Script(build)
+    _ = srv.Script()
+    build()
 }
 
 func build() error{

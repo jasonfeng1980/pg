@@ -64,7 +64,7 @@ func (f *Filter)MySQL(mysqlType string, unsigned bool, isNeed bool)  *FilterConf
         check = strings.Replace(check, "("+ lenMax + ")", "", 1)
     }
     // 获取 enum('secondhand','designer','resell','plum','reclo','big_customer','vip','brandnew','zhongxin')
-    if mysqlType[0:4] == "enum" {
+    if len(mysqlType)>=4 && mysqlType[0:4] == "enum" {
         check = "enum"
         enum = strings.Split(strings.ReplaceAll(mysqlType[5:len(mysqlType)-1], "'", ""), ",")
     }

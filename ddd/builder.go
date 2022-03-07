@@ -28,7 +28,7 @@ func New{DBHandleNameFirstUpper}Dao(ctx context.Context, tableName string, DO ..
     dao := &ddd.DAO{
         Option: &ddd.Option{
             Ctx:          ctx,
-            DBHandleName: "demo",
+            DBHandleName: "{DBHandleName}",
             DatabaseMap:  Database{DBHandleNameFirstUpper},
             TableName:    tableName,
         },
@@ -56,11 +56,12 @@ var Database{DBHandleNameFirstUpper} = &ddd.DataMap{
 `
 var RelationMap = make(map[string][]string)       // 反向表关联 b变名：a表名
 var TplDAOTableMapFieldList = `
-        "{TableName}": {"{DBHandleName}", "{TableName}", "{PK}", []string{{FieldList}}},`
+        "{TableName}": {"{DBHandleName}", "{TableName}", "{PK}", []string{{FieldList}}, []string{{NeedFieldList}}},`
 var TplDaoFieldMapField = `
         "{FieldName}": {"{TableName}","{FieldName}", "{MySQLType}", {Unsigned}, {Need}},`
+var TplDaoRelationMapOneTab = `"{RelationTableName}": {{"{PK}", "{PK}"}}`
 var TplDaoRelationMap = `
-        "{TableName}" : {"{RelationTableName}": {{"{PK}", "{PK}"}}},`
+        "{TableName}" : {{TplDaoRelationMapOneTab}},`
 var EntityTpl = `package {DBHandleName}Entity
 
 import (
@@ -73,7 +74,7 @@ import (
 )
 
 // 获取实体对象
-func New{TableUFirst}Entity(ctx context.Context, pk interface{}) *{TableUFirst}Entity {
+func New{TableUFirst}Entity(ctx context.Context, pk ...interface{}) *{TableUFirst}Entity {
     dao, err := DAO.New{DBHandleNameFirstUpper}Dao(ctx, "{TableName}")
     if err != nil {
         util.Panic(ecode.DaoWrongTable.Error("{DBHandleName}", "{TableName}"))
@@ -130,7 +131,7 @@ func (o *{TableUFirst}Entity) Relation{RelTableUFirst}() *ddd.Query {
 var TplFieldGetSet = `
 // 获取 {FieldComment}
 func (o *{TableUFirst}Entity) Get{FieldNameUFirst}(def ...{MySQLTypeToGoType}) {MySQLTypeToGoType}{
-    return o.AutoLoad("{FieldName}").DO.{MySQLTypeToParam}("{FieldName}", def[0])
+    return o.AutoLoad("{FieldName}").DO.{MySQLTypeToParam}("{FieldName}", def...)
 }
 // 设置 {FieldComment}
 func (o *{TableUFirst}Entity) Set{FieldNameUFirst}(value interface{}) (err error){
@@ -200,7 +201,8 @@ func BuildEntity(confName, appPackage string, path string){
     // 循环表获取各个字段
     DaoTableMapFieldList := ""
     DaoFieldMapFieldList := ""
-    DaoRelationBoxList := ""
+    DaoRelationBoxList  := make(map[string][]string)
+    DaoRelationBoxStr   := ""
 
     FieldBox := make(map[string]int)
     RelationTableMap := make(map[string][]string)
@@ -225,7 +227,7 @@ func BuildEntity(confName, appPackage string, path string){
 
     for _, table := range tableArr {
         EntityRelationList := ""
-        rs, _ := db.Query("select * from information_schema.columns where TABLE_schema =? and TABLE_NAME=?", dbName, table).Array()
+        rs, _ := db.Query("select *,if (ISNULL(COLUMN_DEFAULT), \"0\", \"1\") as hasDefault from information_schema.columns where TABLE_schema =? and TABLE_NAME=?", dbName, table).Array()
 
         tableColumns := make(map[string]*EntityField)
         var (
@@ -246,7 +248,7 @@ func BuildEntity(confName, appPackage string, path string){
                 isNeed = false
             }
 
-            if line["IS_NULLABLE"]== "YES" || line["COLUMN_DEFAULT"] != "" {
+            if line["IS_NULLABLE"]== "YES" || line["hasDefault"] == "1" {
                 isNeed = false
             }
             splitType := strings.Split(line["COLUMN_TYPE"].(string), " ")
@@ -269,11 +271,15 @@ func BuildEntity(confName, appPackage string, path string){
 
             for _, v := range RelationTableMap[table]{
                 relationTableName := v
-                tplRelation := TplDaoRelationMap
+                //tplRelation := TplDaoRelationMap
+                tplRelation := TplDaoRelationMapOneTab
                 tplRelation = strings.Replace(tplRelation, "{TableName}", table, -1)
                 tplRelation = strings.Replace(tplRelation, "{RelationTableName}", relationTableName, -1)
                 tplRelation = strings.Replace(tplRelation, "{PK}", tablePk, -1)
-                DaoRelationBoxList += tplRelation
+                if _, ok := DaoRelationBoxList[table]; !ok { // 还没创建，就创建
+                    DaoRelationBoxList[table] = []string{}
+                }
+                DaoRelationBoxList[table] = append(DaoRelationBoxList[table], tplRelation)
 
                 tplEntityRelation := TplRelationEntity
                 tplEntityRelation = strings.Replace(tplEntityRelation, "{TableUFirst}", util.StrUFirstForSplit(table, "_"), -1)
@@ -323,13 +329,22 @@ func BuildEntity(confName, appPackage string, path string){
 
     }
 
+    // 整理 DaoRelationBoxList
+    for realTable, v := range DaoRelationBoxList {
+        tplRelationStr := TplDaoRelationMap
+        tplRelationStr = strings.Replace(tplRelationStr, "{TableName}", realTable, -1)
+        tplRelationStr = strings.Replace(tplRelationStr, "{TplDaoRelationMapOneTab}", util.ListStringJoin(v, ","), -1)
+
+        DaoRelationBoxStr += tplRelationStr
+    }
+
     // 生成dao文件
     daoStr := DaoTpl
     daoStr =  strings.Replace(daoStr, "{DBHandleName}", confName, -1)
     daoStr =  strings.Replace(daoStr, "{DBHandleNameFirstUpper}", util.StrUFirst(confName), -1)
     daoStr =  strings.Replace(daoStr, "{TableMapFieldList}", DaoTableMapFieldList, -1)
     daoStr =  strings.Replace(daoStr, "{FieldMapFieldList}", DaoFieldMapFieldList, -1)
-    daoStr =  strings.Replace(daoStr, "{RealtionMapList}", DaoRelationBoxList, -1)
+    daoStr =  strings.Replace(daoStr, "{RealtionMapList}", DaoRelationBoxStr, -1)
     daoPath := util.FileRealPath(path)
     dir := daoPath + "/DAO/"
     fileName :=  confName + "Mapper.go"
@@ -350,6 +365,7 @@ func getTableField(table EntityTable, dbHandleName string, appPackage string, en
     var (
         tableMapFieldList  string
         FieldMapFieldList string
+        FieldMapNeedList []string
 
     	FieldGetSetList  []string
     )
@@ -361,7 +377,7 @@ func getTableField(table EntityTable, dbHandleName string, appPackage string, en
     tableMapField =  strings.Replace(tableMapField, "{DBHandleName}", dbHandleName, -1)
     tableMapField =  strings.Replace(tableMapField, "{PK}", table.Pk, -1)
     tableMapField =  strings.Replace(tableMapField, "{FieldList}", fieldStrs, -1)
-    tableMapFieldList += tableMapField
+    //tableMapFieldList += tableMapField
 
     for field, filterObj := range table.Field{
         // Entity的GetSet
@@ -391,6 +407,10 @@ func getTableField(table EntityTable, dbHandleName string, appPackage string, en
         //fieldMapList = append(fieldMapList, tableMapField)
         FieldMapFieldList += fieldMapField
 
+        if filterObj.IsNeed {
+            FieldMapNeedList = append(FieldMapNeedList, field)
+        }
+
         // 增加入口前的 默认数据修改
         //if field == "create_at" {
         //    TableFilter += "  ret.BeforeInsert[\"create_at\"] = db.ChangeNow\n\n"
@@ -399,9 +419,10 @@ func getTableField(table EntityTable, dbHandleName string, appPackage string, en
         //    TableFilter += "  ret.BeforeInsert[\"update_at\"] = db.ChangeNow\n"
         //    TableFilter += "  ret.BeforeUpdate[\"update_at\"] = db.ChangeNow\n\n"
         //}
-
-
     }
+    needFieldStrs := "\"" + strings.Join(FieldMapNeedList, "\",\"") + "\""
+    tableMapField =  strings.Replace(tableMapField, "{NeedFieldList}", needFieldStrs, -1)
+    tableMapFieldList += tableMapField
     return tableMapFieldList, FieldMapFieldList, strings.Join(FieldGetSetList, "\n")
 }
 

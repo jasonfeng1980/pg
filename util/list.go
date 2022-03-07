@@ -80,3 +80,8 @@ func ListInterfaceToStr(l []interface{}) (ret []string){
     }
     return
 }
+
+// 插入list的头部
+func ListAppendHead(l []interface{}, h interface{})[]interface{}{
+    return append([]interface{}{h}, l...)
+}

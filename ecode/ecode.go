@@ -97,6 +97,7 @@ var (
     DaoWrongField = Err(1234, "数据表%s不存在该字段%s")
     DaoEmptyResult = Err(1235, "没有满足条件【%s】的数据")
     DaoMissNeedField = Err(1236, "%s 缺少必填字段【%s】")
+    DaoCheckErr = Err(1237, "%s 验证失败 需要%s 参数%s")
 
     EntityMissPK = Err(1250, "Entity【%s】缺失PK")
     EntityEmptyCreateParams = Err(1251, "Entity创建【%s】记录，没有数据")
@@ -131,5 +132,10 @@ var (
 
 
     // workflow [1500, 1550)
-    WorkFlowNodeNotSupportBill = Err(1501, "工作流节点%s不支持单据%s")
+    WorkflowNotSuupotDocket = Err(1501, "工作流%s 不支持单据%s")
+    WorkflowWrongNodeStatus = Err(1502, "错误的状态%s")
+    WorkflowWrongActCode = Err(1503, "错误的行为编码%s")
+    WorkflowWrongActFnCode = Err(1504, "错误的行为方法名称%s")
+    WorkflowStatusNotAllowNodeStatus = Err(1510, "工作流状态%s 不满足节点状态要求【%s】")
+
 )

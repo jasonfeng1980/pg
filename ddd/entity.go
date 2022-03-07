@@ -20,6 +20,10 @@ type Query struct {
     *db.Query
     ResultFunc func(query *db.Query) (interface{},  error)
 }
+func (r *Query)Select(fields interface{})  *Query{
+    r.Query.Select(fields, true)
+    return r
+}
 func (r *Query) Where(where interface{}, args  ...interface{}) *Query{
     r.Query.Where(where, args...)
     return r
@@ -69,7 +73,7 @@ func (o *Entity)Pk() int64{
     //return o.GetInt64(o.PkName(), 0)
 }
 // 创建新的记录
-func (o *Entity)Create(needFieldNameList ...[]string) error {
+func (o *Entity)Create(needFieldNameList ...string) error {
     if len(o.Params.Box) == 0 {
         return ecode.EntityEmptyCreateParams.Error(o.TableName())
     }
@@ -138,6 +142,9 @@ func (o *Entity)Edit(condition ...map[string]interface{}) *Query{
     }
     // 不允许更新唯一标识
     data := o.Params.Box
+    if len(condition) > 0 {
+        data = condition[0]
+    }
     delete(data, o.PkName())
     q := o.Conn().Update(o.DAO.GetTableName()).Set(data).Where(o.DAO.GetPKName(), o.Pk())
 

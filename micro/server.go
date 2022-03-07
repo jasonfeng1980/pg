@@ -20,6 +20,7 @@ import (
     zipkinhttp "github.com/openzipkin/zipkin-go/reporter/http"
     "github.com/prometheus/client_golang/prometheus/promhttp"
     "github.com/sony/gobreaker"
+    "go.uber.org/zap"
     "golang.org/x/time/rate"
     "google.golang.org/grpc"
     "io"
@@ -85,18 +86,21 @@ func (s *Server) ConnDB(){
     //s.AddCloseFunc(rabbitmq.RabbitMq)
 }
 type ScriptFunc func() error
-func (s *Server)Script(f ScriptFunc) {
-    defer s.Close()
+func (s *Server)Script() context.Context{
+    //defer s.Close()
     // 链接数据库和MQ
     s.ConnDB()
-
-    var g group.Group
+    util.Log().Logger.WithOptions(zap.AddCallerSkip(2))
+    //var g group.Group
     // 优雅退出
-    initShutdown(&g)
+    //initShutdown(&g)
     // 开始执行脚本方法
-    initScriptFunc(&g, f)
+    //initScriptFunc(&g, f)
 
-    util.Info("", "Exit", g.Run())
+    // 开启SESSION
+    return util.SessionNew(context.Background())
+
+    //util.Info("", "Exit", g.Run())
 }
 
 func (s *Server) Run() {

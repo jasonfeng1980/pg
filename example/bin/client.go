@@ -15,7 +15,8 @@ func main(){
         os.Exit(1)
     }
     srv := pg.Server(context.Background())
-    srv.Script(clientTest)
+    srv.Script()
+    clientTest()
 }
 
 func clientTest() error {

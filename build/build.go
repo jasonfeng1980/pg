@@ -1,4 +1,4 @@
-package main
+package build
 
 import (
 	"context"
@@ -14,7 +14,7 @@ var (
 	dbHandleName string
 )
 
-func main(){
+func Build(){
 	// 根据参数加载配置文件
 	flagSet := flag.NewFlagSet("build", flag.ExitOnError)
 	flagSet.StringVar(&configFile, "c", "", "配置文件地址")
@@ -41,11 +41,9 @@ func main(){
 	}
 
 	srv := pg.Server(context.Background())
-	srv.Script(build)
-}
+	srv.Script()
+	defer srv.Close()
 
-func build() error{
 	ddd.BuildEntity(dbHandleName, pg.Conf.GetString("Build.Package"), "repository")
 
-	return nil
 }

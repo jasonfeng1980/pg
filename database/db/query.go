@@ -140,9 +140,12 @@ func (q *Query)XaRecover() ([]map[string]interface{}, error){
 }
 
 // 查询
-func (q *Query)Select(fields interface{})  *Query{
+func (q *Query)Select(fields interface{}, notClear ...bool)  *Query{
     // 初始化option
-    q.Clear()
+    if len(notClear)==0 || notClear[0]==false {
+        q.Clear()
+    }
+
 
     var selectOptions []string
 
@@ -235,8 +238,10 @@ func (q *Query)Where(where interface{}, args  ...interface{}) *Query{
             whereSql, args = q.addWhereSql("", whereSql, util.M{"$in": args})
         }
     case map[string]interface{}:
+        var tmp []interface{}
         for k, v := range where.(map[string]interface{}) {
-            whereSql, args = q.addWhereSql(whereSql, k, v)
+            whereSql, tmp = q.addWhereSql(whereSql, k, v)
+            args = append(args, tmp...)
         }
     default:
         mList := q.toList(where)

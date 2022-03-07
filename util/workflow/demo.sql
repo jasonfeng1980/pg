@@ -1,0 +1,73 @@
+
+CREATE TABLE `enter_warehouse` (
+  `enter_warehouse_id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `workflow_tpl_code` varchar(255) NOT NULL COMMENT '工作流模板code',
+  `product_id` int(11) NOT NULL DEFAULT '0' COMMENT '商品ID',
+  `EW1000` varchar(255) NOT NULL DEFAULT "" COMMENT '收货打签节-点状态',
+  `EW2000` varchar(255) NOT NULL DEFAULT "" COMMENT '鉴定-节点状态',
+  `EW3000` varchar(255) NOT NULL DEFAULT "" COMMENT '编辑-节点状态',
+  `EW4100` varchar(255) NOT NULL DEFAULT "" COMMENT '拍摄-节点状态',
+  `EW4200` varchar(255) NOT NULL DEFAULT "" COMMENT '卖家定价-节点状态',
+  `EW6000` varchar(255) NOT NULL DEFAULT "" COMMENT '网关拍摄完成且卖家完成定价-网关状态',
+  `enter_warehouse_end` tinyint NOT NULL default '0' COMMENT '工作流是否完结: 0进行中|1完结',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+  `op_id` int(11) NOT NULL DEFAULT '0' COMMENT '最后操作人',
+  `version` int(11) NOT NULL DEFAULT '0' COMMENT '版本ID',
+  `enter_warehouse_deleted` tinyint NOT NULL default '0' COMMENT '是否是删除: 0不是|1是',
+  PRIMARY KEY (`enter_warehouse_id`),
+  KEY `workflow_tpl_code` (`workflow_tpl_code`),
+  KEY `product_id` (`product_id`),
+  KEY `EW1000` (`EW1000`),
+  KEY `EW2000` (`EW2000`),
+  KEY `EW3000` (`EW3000`),
+  KEY `EW4100` (`EW4100`),
+  KEY `EW4200` (`EW4200`),
+  KEY `created_at` (`created_at`),
+  KEY `enter_warehouse_end` (`enter_warehouse_end`),
+  KEY `op_id` (`op_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='入仓工作流-主表';
+
+CREATE TABLE `enter_warehouse_node` (
+  `enter_warehouse_node_id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `workflow_tpl_code` varchar(255) NOT NULL COMMENT '工作流模板code',
+  `enter_warehouse_id` int(11) unsigned NOT NULL COMMENT '工作流ID',
+  `product_id` int(11) NOT NULL DEFAULT '0' COMMENT '商品ID',
+  `node_code` varchar(255) NOT NULL COMMENT '节点code',
+  `node_status` varchar(255) NOT NULL COMMENT '节点状态code',
+  `node_is_end` tinyint NOT NULL default '0' COMMENT '是否是完结状态: 0不是|1是',
+  `enter_warehouse_node_created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `enter_warehouse_node_updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最后更新时间',
+  `op_id` int(11) NOT NULL DEFAULT '0' COMMENT '最后操作人',
+  `version` int(11) NOT NULL DEFAULT '0' COMMENT '版本ID',
+  `enter_warehouse_node_deleted` tinyint NOT NULL default '0' COMMENT '是否是删除: 0不是|1是',
+  PRIMARY KEY (`enter_warehouse_node_id`),
+  KEY `workflow_tpl_code` (`workflow_tpl_code`),
+  KEY `product_id` (`product_id`),
+  KEY `enter_warehouse_id` (`enter_warehouse_id`),
+  KEY `node_code` (`node_code`),
+  KEY `node_status` (`node_status`),
+  KEY `node_is_end` (`node_is_end`),
+  KEY `op_id` (`op_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='入仓工作流-节点状态';
+
+CREATE TABLE `enter_warehouse_log` (
+  `enter_warehouse_log_id` int(11) unsigned NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `workflow_tpl_code` varchar(255) NOT NULL COMMENT '工作流模板code',
+  `enter_warehouse_id` int(11) unsigned NOT NULL COMMENT '工作流ID',
+  `product_id` int(11) NOT NULL DEFAULT '0' COMMENT '商品ID',
+  `docket_code` varchar(255) NOT NULL COMMENT '单据code',
+  `enter_warehouse_log_params` text NOT NULL COMMENT '回滚数据',
+  `enter_warehouse_log_rollback` text NOT NULL COMMENT '回滚数据',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+  `op_id` int(11) NOT NULL DEFAULT '0' COMMENT '操作人',
+  `version` int(11) NOT NULL DEFAULT '0' COMMENT '版本ID',
+  `enter_warehouse_log_deleted` tinyint NOT NULL default '0' COMMENT '是否是删除: 0不是|1是',
+  PRIMARY KEY (`enter_warehouse_log_id`),
+  KEY `workflow_tpl_code` (`workflow_tpl_code`),
+  KEY `product_id` (`product_id`),
+  KEY `enter_warehouse_id` (`enter_warehouse_id`),
+  KEY `docket_code` (`docket_code`),
+  KEY `created_at` (`created_at`),
+  KEY `op_id` (`op_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='入仓工作流-单据日志';
+

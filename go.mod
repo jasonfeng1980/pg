@@ -2,6 +2,7 @@ module github.com/jasonfeng1980/pg
 
 go 1.16
 
+replace github.com/jasonfeng1980/pg => /Users/fengshengqi/Documents/code/golang/src/pg
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
 
