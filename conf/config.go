@@ -77,6 +77,8 @@ func Load(configFile string) (error){
     // 修改root
     if Conf.Root == "" {
         Conf.Root = util.FileRealPath(".")
+    } else if Conf.Root[:1] == "." {
+        Conf.Root = util.FileRealPath(Conf.Root)
     }
     // 初始化日志
     if Conf.LogDir != "" && Conf.LogDir[:1] != "/" {
