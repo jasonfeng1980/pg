@@ -1,0 +1,45 @@
+{
+  "Build": {
+    "Package": "codeup.aliyun.com/5f119a766207a1a8b17f58ba/aplum_mis/workflow"
+  },
+  "Server": {
+    "Name": "workflow",
+    "Num": "01",
+    "Root": "..",
+    "Env": "dev",
+
+    "LogDir": "",
+    "LogLevel": "info",
+
+    "AddrDebug": ":8081",
+    "AddrHttp":  ":80",
+    "AddrGrpc":  ":9001",
+
+    "ETCD":   "etcd://:@tcp(127.0.0.1:2379)/?DialTimeout=3&KeepAlive=3&RetryTimes=3&RetryTimeout=30",
+    "ZipkinUrl": "http://localhost:9411/api/v2/spans",
+
+    "__CacheRedis": "workflow",
+    "CacheSec":    60
+  },
+  "MySQL": {
+    "workflow": [
+      "mysql://root:@tcp(localhost:3306)/workflow?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30",
+      "mysql://root:@tcp(localhost:3306)/workflow?charset=utf8mb4&maxOpen=200&maxIdle=100&maxLifetime=30"
+    ]
+  },
+  "__Redis": {
+    "workflow": [
+      "redis://:@tcp(localhost:6379)/0"
+    ]
+  },
+  "__KAFKA": {
+    "canal_product": {
+      "Server": ["127.0.0.1:9092"],
+      "Topic": [""],
+      "GroupId": ""
+    }
+  },
+  "Workflow": {
+    "enter_warehouse": "../conf/workflow/enter_warehouse.json"
+  }
+}

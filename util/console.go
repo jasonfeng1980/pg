@@ -13,7 +13,7 @@ func ConsoleTip(tip string, f ConsoleTipFunc){
     var goNext bool
     reader := bufio.NewReader(os.Stdin)
     for {
-        fmt.Println(tip)
+        fmt.Print(tip, ": ")
         fmt.Print("$ ")
         cmdString, err := reader.ReadString('\n')
         if err != nil {

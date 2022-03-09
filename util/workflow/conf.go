@@ -2,10 +2,11 @@ package workflow
 
 // 工作流的配置
 type Conf struct {
-    Info ConfInfo      `json:"info"`    // 基本信息
-    Node []*ConfNode    `json:"node"`    // 所有节点配置
-    Act  []*ConfAct      `json:"act"`    // 所有行为配置
-    Docket []*ConfDocket `json:"docket"` // 单据配置
+    Info ConfInfo           `json:"info"`    // 基本信息
+    Node []*ConfNode        `json:"node"`    // 所有节点配置
+    Act  []*ConfAct         `json:"act"`     // 所有行为配置
+    Docket []*ConfDocket    `json:"docket"`  // 单据配置
+    OB   []*ConfOB          `json:"ob"`      // 观察者
 }
 // 基本信息
 type ConfInfo struct {
@@ -31,6 +32,7 @@ type ConfNodeStatus struct {
     Hide        bool    `json:"hide"`           // true 不修改工作流状态；默认false 修改工作流状态
     To          []string `json:"to"`            // Arrive的简写  ["status":"nodeStatus", ...]
     Arrive      []*ConfDo `json:"arrive"`       // 到达状态时，执行行为指令
+    OB          []*ConfOB `json:"ob"`           // 节点状态的观察者
 }
 
 // 行为配置
@@ -58,11 +60,14 @@ type ConfDo struct {
     Status    []string  `json:"status"`      // 默认行为：修改的状态
     Act       string    `json:"act"`        // 获取指定行为
 }
-// 观察者
+
+// 行为配置
 type ConfOB struct {
-    Name    string      `json:"name"`       // 名称
-    Desc    string      `json:"desc"`       // 备注
-    Fn      string      `json:"fn"`         // 注册的方法名
+    Code      string     `json:"code"`             // 编码
+    Name      string    `json:"name"`               // 名称
+    Allow    []string  `json:"allow"`               // 监控的节点|节点状态
+    Fn        string    `json:"fn"`                 // 绑定的方法标识
+    Args      map[string]interface{} `json:"args"`  // 固定的参数
 }
 
 

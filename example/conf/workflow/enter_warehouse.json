@@ -1,0 +1,72 @@
+{
+  "info": {"code": "enter_warehouse", "name": "入仓工作流", "desc": "货物从收货打签到待上架的流程"},
+  "node": [
+    {"code": "EW1000", "name": "收货打签", "type": "node", "status": [
+      {"code": "EW1001", "name": "待收货打签"},
+      {"code": "EW1090", "name": "收货打签完成", "end": 1, "to": ["EW2001"]}
+    ]},
+    {"code": "EW2000", "name": "鉴定", "type": "node", "status": [
+      {"code": "EW2001", "name": "待分配"},
+      {"code": "EW2010", "name": "待初审"},
+      {"code": "EW2011", "name": "初审通过待复审"},
+      {"code": "EW2012", "name": "初始拒绝待复审"},
+      {"code": "EW2020", "name": "待复审"},
+      {"code": "EW2021", "name": "复审通过", "end": 1, "to": ["EW3001"]},
+      {"code": "EW2022", "name": "复审拒绝", "end": 1, "finish": 1},
+      {"code": "EW2030", "name": "待中检"},
+      {"code": "EW2031", "name": "中检通过"},
+      {"code": "EW2032", "name": "中检不通过"},
+      {"code": "EW2033", "name": "中检有争议"},
+      {"code": "EW2034", "name": "中检拒绝"}
+    ]},
+    {"code": "EW3000", "name": "编辑", "type": "node", "status": [
+      {"code": "EW3001", "name": "待编辑"},
+      {"code": "EW3002", "name": "编辑中"},
+      {"code": "EW3003", "name": "编辑完成", "end": 1, "hide": true}
+    ]},
+    {"code": "EW4100", "name": "拍摄", "type": "node", "status": [
+      {"code": "EW4101", "name": "待拍摄"},
+      {"code": "EW4110", "name": "拍摄完成待审核"},
+      {"code": "EW4111", "name": "审核通过", "end": 1, "to": ["EW6001"]},
+      {"code": "EW4112", "name": "审核拒绝-待重拍"}
+    ]},
+    {"code": "EW4200", "name": "卖家定价", "type": "node", "status": [
+      {"code": "EW4201", "name": "待卖家定价", "hide": true},
+      {"code": "EW4210", "name": "卖家定价完成", "end": 1, "to": ["EW6001"]}
+    ]},
+    {"code": "EW6000", "name": "网关拍摄完成且卖家完成定价", "type": "gateway", "status": [
+      {"code": "EW6001", "name": "等待拍摄完成且卖家定价完成", "arrive": [{"check": ["EW4111", "EW4210"] ,"status": ["EW6010"]}]},
+      {"code": "EW6010", "name": "拍摄完成且卖家定价完成", "end": 1, "to": ["EW9001"]}
+    ]},
+    {"code": "EW9000", "name": "入仓工作流完成", "status": [
+      {"code": "EW9001", "name": "入仓完成", "end": 1, "finish": 1}
+    ]}
+  ],
+  "act": [
+    {"code": "122", ",name": "鉴定-分配", "fn": "identifyAssign"},
+    {"code": "131", ",name": "强制去待编辑", "status": ["EW3001"]},
+    {"code": "800", ",name": "开启退货流程", "fn": "beginReturnProcess"},
+    {"code": "900", ",name": "强制扭转", "fn": "force_to", "args": {}}
+  ],
+  "ob": [
+    {"code": "OB100", "name": "卖家视角-更新状态", "allow": ["EW1001","EW2021","EW2022","EW4201","EW4210","EW9001"], "fn": "sellerChangeStatus"},
+    {"code": "OB110", "name": "买家视角-更新状态", "allow": ["EW9001"], "fn": "userChangeStatus"},
+    {"code": "OB200", "name": "财务视角-更新流水", "allow": ["EW2021"], "fn": "financeAddFlow"},
+    {"code": "OB300", "name": "WMS视角-移动货位", "allow": ["EW1090","EW2021","EW3003","EW4111","EW9001"], "fn": "wmsChangeNum"}
+  ],
+  "docket": [
+    {"code": "101", "name": "快递-签收单", "allow": [], "do": [{"act": "WF_CreateWorkflow"}, {"status": ["EW1001"]}]},
+    {"code": "102", "name": "收货打签-完成单", "allow": ["EW1001"], "do": [{"status": ["EW1090"]}]},
+    {"code": "201", ",name": "鉴定-分配单", "allow": ["EW2001"], "do": [{"act": "122"}]},
+    {"code": "202", ",name": "鉴定-初审通过单", "allow": ["EW2010", "EW2012"], "do": [{"status": ["EW2011"]}]},
+    {"code": "203", ",name": "鉴定-初审拒绝单", "allow": ["EW2010", "EW2011"], "do": [{"status": ["EW2012"]}]},
+    {"code": "204", ",name": "鉴定-复审通过单", "allow": ["EW2000"], "do": [{"status": ["EW2021"]}]},
+    {"code": "205", ",name": "鉴定-复审拒绝单", "allow": ["EW2000"], "do": [{"status": ["EW2012"]}, {"act": "800"}]},
+    {"code": "301", ",name": "编辑-编辑中单", "allow": ["EW3001"], "do": [{"status": ["EW3002"]}]},
+    {"code": "302", ",name": "编辑-编辑完成单", "allow": ["EW3001", "EW3002"], "do": [{"status": ["EW3003","EW4101", "EW4201"]}]},
+    {"code": "401", ",name": "拍摄-拍摄完成单", "allow": ["EW4101", "EW4112"], "do": [{"status": ["EW4110"]}]},
+    {"code": "411", ",name": "拍摄-审核通过单", "allow": ["EW4110", "EW4112"], "do": [{"status": ["EW4111"]}]},
+    {"code": "412", ",name": "拍摄-审核拒绝待重拍单", "allow": ["EW4110"], "do": [{"status": ["EW4112"]}]},
+    {"code": "501", ",name": "卖家定价单", "allow": ["EW4201"], "do": [{"status": ["EW4210"]}]}
+  ]
+}

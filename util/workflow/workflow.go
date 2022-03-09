@@ -32,7 +32,14 @@ func New(config *Conf, fn ConfFn) *Workflow{
     for _, v := range wf.Conf.Node {
         wf.MapNode[v.Code] = v
         for _, vs := range v.Status {
-            // 2.3.2 节点状态
+            // 2.3.2 绑定所有的观察者 @todo
+            for _, ob := range wf.Conf.OB{
+                // 如果OB允许列表 有 节点的状态 或者 节点code，就添加观察者
+                if len(ob.Allow)==0 || util.ListHave(ob.Allow, vs.Code) || util.ListHave(ob.Allow, vs.NodeCode){
+                    vs.OB = append(vs.OB, ob)
+                }
+            }
+            // 2.3.3 节点状态
             vs.NodeCode = v.Code
             wf.MapNodeStatus[vs.Code] = vs
         }
@@ -59,6 +66,8 @@ type ConfFn interface {
     RunRollbackAct(operatorId int64, workflowId int64, rollbackAct []RollbackParams)
     // 7. 自定义行为
     CustomAct(operatorId int64, workflowId int64, docketCode string, act *ConfAct, params map[string]interface{})(nowWorkflowId int64, rollbackAct []RollbackParams, err error)
+    // 8. 观察者行为
+    ObAct(operatorId int64, workflowId int64, nodeStatus *ConfNodeStatus, obAct *ConfOB, params map[string]interface{}) (rollbackAct []RollbackParams, err error)
 }
 
 type RollbackParams struct {
@@ -87,22 +96,6 @@ type EnterWarehouseNode struct {
     Version     int
     IsEnd       int
 }
-
-//// 1. 获取当前待处理的节点状态
-//type GetWorkflowToDoStatus func (workflowId int64) (workflowStatusList []string, err error)
-//// 2. 获取指定节点状态和版本
-//type GetNodeStatus func(workflowId int64, nodeCode string) (nodeStatus string, err error)
-//// 3. 创建工作流,记录日志 - 统一返回格式
-//type CreateWorkflow func(operatorId int64, workflowConf *Conf, params map[string]interface{}) (nowWorkflowId int64, rollbackAct []RollbackParams, err error)
-//// 4. 更新节点状态,记录日志 - 统一返回格式
-//type ChangeNodeStatus func(workflowId int64, nodeStatus *ConfNodeStatus, params map[string]interface{}) (nowWorkflowId int64, rollbackAct RollbackParams, err error)
-//// 5. 更新工作流状态,记录日志 - 统一返回格式
-//type ChangeWorkflowStatus func(workflowId int64, nodeStatus *ConfNodeStatus, params map[string]interface{}) (nowWorkflowId int64, rollbackAct RollbackParams, err error)
-//// 6. 写单据提交日志和回滚数据
-//type SaveSubmitLog func(operatorId int64, nowWorkflowId int64, docketCode string, params map[string]interface{}, e error, rollbackAct []RollbackParams) (submitLogId string, err error)
-//// 7. 执行回滚
-//type RunRollbackAct func(operatorId int64, workflowId int64, rollbackAct []RollbackParams)
-
 
 // 提交单据
 func (w *Workflow)Submit(operatorId int64, workflowId int64, docketCode string, params map[string]interface{}) (nowWorkflowId int64, submitLogId string, err error){
@@ -233,19 +226,13 @@ func (w *Workflow)runOneDo(operatorId int64, workflowId int64, docketCode string
 func (w *Workflow)ArriveNodeStatus(operatorId int64, workflowId int64, docketCode string, nodeStatus *ConfNodeStatus,
     params map[string]interface{}) (nowWorkflowId int64, rollbackActList []RollbackParams, err error){
     nowWorkflowId = workflowId
-    // 1. 获取节点状态配置
+    // 如果节点配置的到达后执行的行为
     if len(nodeStatus.Arrive)>0 {
         if workflowId, rollbackActList, err = w.RunAct(operatorId, workflowId, docketCode, nodeStatus.Arrive, params); err != nil {
             return
         }
     }
-
-    // 2. 执行观察者
-
-    // 3. 执行通知事件
-
     return
-
 }
 
 // 判断工作流状态是否满足允许的节点状态
@@ -301,13 +288,6 @@ func (w *Workflow)DefaultChangeStatus(operatorId int64, workflowId int64, docket
         rollbackActList = append(rollbackActList, rollback)
     }
 
-
-    //// 如果节点状态不要求隐藏状态，就更新工作流状态
-    //if !nodeStatus.Hide {
-    //    nowWorkflowId, rollback, err = w.ConfFn.ChangeWorkflowStatus(nowWorkflowId, nodeStatus, params)
-    //    rollbackActList = append([]RollbackParams{rollback}, rollbackActList...)
-    //}
-
     // 如果节点，有默认调整 就更新节点状态
     if len(nodeStatus.To)>0 {
         for _, v := range nodeStatus.To{
@@ -332,7 +312,18 @@ func (w *Workflow)DefaultChangeStatus(operatorId int64, workflowId int64, docket
             }
         }
     }
-
-
+    return
+}
+// 执行状态绑定的观察者
+func (w *Workflow) NotifyOb(operatorId int64, workflowId int64, nodeStatus *ConfNodeStatus, params map[string]interface{}) (rollbackAct []RollbackParams, err error){
+    var rollbackActOne []RollbackParams
+    // 1. 循环调用状态绑定的OB
+    for _, ob := range nodeStatus.OB{
+        if rollbackActOne, err = w.ConfFn.ObAct(operatorId, workflowId, nodeStatus, ob, params); err !=nil{
+            return
+        } else if len(rollbackActOne)>0{
+            rollbackAct = append(rollbackActOne, rollbackAct...)
+        }
+    }
     return
 }

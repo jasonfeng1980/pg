@@ -164,11 +164,12 @@ func main(){
         Server("example/conf/demo/pg_11_dev.yaml").
         Set()
     svc := pg.Server()
-    svc.Script(test)       // 满足 func() error 就可以
+    svc.Script()、
+    test()
 }
 
-func test() error {
-    return nil
+func test()  {
+    // ...
 }
 ```
 
@@ -351,14 +352,103 @@ util.Error("msg")
 ```
 
 ### 自动生成资源仓库和实体文件
+复制下面的代码到XXX.go
 ```go
-ddd.BuildEntity(dbHandleName, "当前的包名", "资源仓储目录名")
+package main
+
+import "github.com/jasonfeng1980/pg/build"
+
+func main()  {
+    build.Build()
+}
 ```
 - 详见  https://github.com/jasonfeng1980/pg/blob/master/build/build.go
 ```bash
-pg build -c dev.json -db demo     # pg build -c 配置文件   -db 数据库别名
+go run xxx.go build -c dev.json -db demo     # pg build -c 配置文件   -db 数据库别名
 ```
 
+### 基于单据的工作流引擎
+实现8个接口:
+```go
+// 1. 获取当前待处理的节点状态
+GetWorkflowToDoStatus(workflowId int64) (workflowStatusList []string, err error)
+// 2. 获取指定节点状态
+GetNodeStatus(workflowId int64, nodeCode string) (nodeStatus string, err error)
+// 3. 创建工作流,记录日志 - 统一返回格式
+CreateWorkflow(operatorId int64, params map[string]interface{}) (nowWorkflowId int64, rollbackAct []RollbackParams, err error)
+// 4. 更新节点状态,记录日志 - 统一返回格式
+ChangeNodeStatus(operatorId int64, workflowId int64, nodeStatus *ConfNodeStatus, params map[string]interface{}) (nowWorkflowId int64, rollbackAct RollbackParams, err error)
+// 5. 写单据提交日志和回滚数据
+SaveSubmitLog(operatorId int64, nowWorkflowId int64, docketCode string, params map[string]interface{}, e error, rollbackAct []RollbackParams) (submitLogId string, err error)
+// 6. 执行回滚
+RunRollbackAct(operatorId int64, workflowId int64, rollbackAct []RollbackParams)
+// 7. 自定义行为
+CustomAct(operatorId int64, workflowId int64, docketCode string, act *ConfAct, params map[string]interface{})(nowWorkflowId int64, rollbackAct []RollbackParams, err error)
+// 8. 观察者行为
+ObAct(operatorId int64, workflowId int64, nodeStatus *ConfNodeStatus, obAct *ConfOB, params map[string]interface{}) (rollbackAct []RollbackParams, err error)
+```
+配置工作流json:
+```json
+{
+// 工作流的基本信息,
+  "info": {"code": "enter_warehouse", "name": "入仓工作流", "desc": "货物从收货打签到待上架的流程"},  
+// 节点列表,
+  "node": [   
+// 某个节点基本信息：  type node节点|gateway网关
+    {"code": "EW1000", "name": "收货打签", "type": "node", "status": [ 
+// 节点状态 end节点流程结算|finish工作流结束|to到达后自动跳转到节点状态，可以是多个|arrive是到达后执行的多个行为
+// 行为  如果有check是需要同时满足的节点状态，满足后执行后面的行为， 可以是默认 status状态改变|act自定义行为code
+    ]},
+    {"code": "EW2000", "name": "拍摄", "type": "node", "status": [
+      {"code": "EW6001", "name": "等待拍摄完成且卖家定价完成", "arrive": [{"check": ["EW4111", "EW4210"] ,"status": ["EW6010"]}]},
+    ]}
+  ],
+  "act": [
+// 自定义行为  fn 是自定义行为的方法标记| status 默认状态改变方法
+    {"code": "122", ",name": "鉴定-分配", "fn": "identifyAssign"},
+    {"code": "131", ",name": "强制去待编辑", "status": ["EW3001"]},
+  ],
+  "ob": [
+// 观察者  同步执行  allow允许的工作流待处理的节点状态|观察者的标识
+    {"code": "OB100", "name": "卖家视角-更新状态", "allow": ["EW1001","EW2021","EW2022","EW4201","EW4210","EW9001"], "fn": "sellerChangeStatus"}
+  ],
+  "docket": [
+// 定义单据  allow允许的工作流待处理的节点状态，[]表示不限制|do要执行的行为，status默认状态改变，act用上面配置的自定义行为code
+// {"act": "WF_CreateWorkflow"} 默认创建工作流的方法
+    {"code": "101", "name": "快递-签收单", "allow": [], "do": [{"act": "WF_CreateWorkflow"}, {"status": ["EW1001"]}]},
+    {"code": "102", "name": "收货打签-完成单", "allow": ["EW1001"], "do": [{"status": ["EW1090"]}]}
+  ]
+}
+```
+启用
+```go
+import "github.com/jasonfeng1980/pg/util/workflow"
+// 入库工作流
+type EnterWarehouseRoot struct {
+    Ctx             context.Context
+    *workflow.Workflow
+    *workflowEntity.EnterWarehouseEntity
+    *ddd.AggregateRoot
+}
+
+// 获取配置
+if confJson, err := util.FileRead(conf.ConfBox.GetString("Workflow.enter_warehouse")); err !=nil {
+    return nil
+} else if err =json.Unmarshal(confJson, &cf); err !=nil {
+    return
+}
+
+// 获取实例，并绑定方法
+ew := &EnterWarehouseRoot{
+    Ctx:                    ctx,
+    EnterWarehouseEntity:   workflowEntity.NewEnterWarehouseEntity(ctx, pk),
+    AggregateRoot:          ddd.NewAggregateRoot(prefix, pk),
+}
+ew.Workflow = workflow.New(&cf, ew)
+// 执行
+workflowId, _, err = enterWarehouse.Submit(operatorId, workflowId, "101", params)
+```
+- 详见  https://github.com/jasonfeng1980/pg/blob/master/example/bin/workflow.go
 
 
 
