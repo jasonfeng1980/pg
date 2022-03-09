@@ -1,7 +1,7 @@
 package main
 
 import (
-    "codeup.aliyun.com/5f119a766207a1a8b17f58ba/aplum_mis/workflow/aggregate/wf"
+    "github.com/jasonfeng1980/pg/example/aggregate/wf"
     "context"
     "fmt"
     "github.com/jasonfeng1980/pg"

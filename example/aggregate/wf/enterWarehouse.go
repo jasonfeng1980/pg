@@ -1,8 +1,8 @@
 package wf
 
 import (
-    "codeup.aliyun.com/5f119a766207a1a8b17f58ba/aplum_mis/workflow/ecode"
-    "codeup.aliyun.com/5f119a766207a1a8b17f58ba/aplum_mis/workflow/entity/workflowEntity"
+    "github.com/jasonfeng1980/pg/example/ecode"
+    "github.com/jasonfeng1980/pg/example/entity/workflowEntity"
     "context"
     "encoding/json"
     "fmt"

@@ -1,6 +1,6 @@
 {
   "Build": {
-    "Package": "codeup.aliyun.com/5f119a766207a1a8b17f58ba/aplum_mis/workflow"
+    "Package": "github.com/jasonfeng1980/pg/example"
   },
   "Server": {
     "Name": "workflow",
