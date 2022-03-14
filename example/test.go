@@ -1,5 +1,6 @@
 package example
 
+/*
 import (
     "bytes"
     "context"
@@ -278,3 +279,4 @@ func Translate(){
     }
     fmt.Println(res.String())
 }
+*/

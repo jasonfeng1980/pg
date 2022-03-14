@@ -8,8 +8,8 @@ import (
 	_ "github.com/jasonfeng1980/pg/example/application/demo"
 )
 
-func main(){
-	if err :=pg.Load("../conf/pg_demo.01.dev.json");err!= nil {
+func main() {
+	if err := pg.Load("../conf/pg_demo.01.dev.json"); err != nil {
 		util.Panic("加载配置错误", "error", err)
 		return
 	}

@@ -3,8 +3,7 @@ package finder
 import (
 	"context"
 	"fmt"
-
-	"go.etcd.io/etcd/clientv3"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/jasonfeng1980/pg/ecode"
 	"github.com/jasonfeng1980/pg/micro/endpoint"
@@ -15,14 +14,14 @@ import (
 var etcdInstances = make(map[string]*etcdClient)
 
 // 活动etcd实例
-func NewEtcd(ctx context.Context, etcdDns string) (*etcdClient, error){
+func NewEtcd(ctx context.Context, etcdDns string) (*etcdClient, error) {
 	// 有缓存就不重新链接
 	if _, ok := etcdInstances[etcdDns]; ok {
 		return etcdInstances[etcdDns], nil
 	}
 
-	m, e:= util.MapFromDns(etcdDns)
-	if e!= nil {
+	m, e := util.MapFromDns(etcdDns)
+	if e != nil {
 		return nil, e
 	}
 
@@ -45,44 +44,43 @@ func NewEtcd(ctx context.Context, etcdDns string) (*etcdClient, error){
 		return nil, err
 	}
 	// 判断下client的链接状态
-	timeoutCtx, cancel := context.WithTimeout(ctx, 2 * time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	if _, err =client.Status(timeoutCtx, config.Endpoints[0]); err !=nil {
+	if _, err = client.Status(timeoutCtx, config.Endpoints[0]); err != nil {
 		return nil, err
 	}
 
-
 	etcdInstances[etcdDns] = &etcdClient{
-		EtcdRetryTimes: 3,
+		EtcdRetryTimes:   3,
 		EtcdRetryTimeout: time.Second * 3,
-		ctx:	ctx,
-		client: client,
-		kv:     clientv3.NewKV(client),
-		leaser: clientv3.NewLease(client),
-		watcher: make(map[string]clientv3.Watcher),
-		cache:	 make(map[string][]string),
+		ctx:              ctx,
+		client:           client,
+		kv:               clientv3.NewKV(client),
+		leaser:           clientv3.NewLease(client),
+		watcher:          make(map[string]clientv3.Watcher),
+		cache:            make(map[string][]string),
 		Balancer: Balancer{
 			F: Random,
 		},
 		Retry: Retry{
-			ctx: ctx,
-			Timeout: m.GetTimeDuration("params.RetryTimeout", 30) * time.Second,
+			ctx:        ctx,
+			Timeout:    m.GetTimeDuration("params.RetryTimeout", 30) * time.Second,
 			RetryTimes: m.GetInt("params.RetryTimes", 1),
 		},
 	}
-	return etcdInstances[etcdDns],  nil
+	return etcdInstances[etcdDns], nil
 }
 
 type etcdClient struct {
-	EtcdRetryTimes int
-	EtcdRetryTimeout  time.Duration
-	ctx context.Context
-	client  *clientv3.Client
-	kv    clientv3.KV
-	leaser   clientv3.Lease
-	watcher  map[string]clientv3.Watcher
-	hbch 	 map[string]<-chan *clientv3.LeaseKeepAliveResponse
-	cache    map[string][]string
+	EtcdRetryTimes   int
+	EtcdRetryTimeout time.Duration
+	ctx              context.Context
+	client           *clientv3.Client
+	kv               clientv3.KV
+	leaser           clientv3.Lease
+	watcher          map[string]clientv3.Watcher
+	hbch             map[string]<-chan *clientv3.LeaseKeepAliveResponse
+	cache            map[string][]string
 
 	Balancer Balancer
 	Retry    Retry
@@ -100,7 +98,7 @@ func (c *etcdClient) WatchPrefix(prefix string) {
 	}
 	newCtx, cancal := context.WithCancel(c.ctx)
 
-	for  {
+	for {
 		watchChan := c.watcher[prefix].Watch(newCtx, prefix, clientv3.WithPrefix(), clientv3.WithRev(0))
 		select {
 		case <-newCtx.Done():
@@ -118,7 +116,7 @@ func (c *etcdClient) WatchPrefix(prefix string) {
 }
 
 // 经过缓存，查询指定前缀的值
-func (c *etcdClient) Get(prefix string) (srvList []string,  err error) {
+func (c *etcdClient) Get(prefix string) (srvList []string, err error) {
 	// 1. 有缓存，就直接返回
 	if v, ok := c.cache[prefix]; ok {
 		return v, nil
@@ -134,7 +132,6 @@ func (c *etcdClient) Get(prefix string) (srvList []string,  err error) {
 
 	return
 }
-
 
 // 获取指定前缀的值，无缓存，直接查询etcd
 func (c *etcdClient) GetEntries(key string) ([]string, error) {
@@ -152,7 +149,7 @@ func (c *etcdClient) GetEntries(key string) ([]string, error) {
 }
 
 // 注册K-V
-func (c *etcdClient)Register(k string, v string) error{
+func (c *etcdClient) Register(k string, v string) error {
 	s := Server{
 		k,
 		v,
@@ -191,7 +188,7 @@ func (c *etcdClient)Register(k string, v string) error{
 		for {
 			select {
 			case r := <-hbch:
-				if r == nil {	// 租约失效,就退出
+				if r == nil { // 租约失效,就退出
 					return
 				}
 			case <-c.ctx.Done():
@@ -223,26 +220,26 @@ func (c *etcdClient) close() {
 		c.leaser.Close()
 	}
 	if c.watcher != nil {
-		for _, v := range c.watcher{
+		for _, v := range c.watcher {
 			v.Close()
 		}
 	}
 }
 
 type Server struct {
-	Key		string
-	Value	string
+	Key   string
+	Value string
 }
 
-type DoEptFunc  func(scheme string, instanceAddr string)(endpoint.Endpoint, error)
+type DoEptFunc func(scheme string, instanceAddr string) (endpoint.Endpoint, error)
 
-func (e *etcdClient)Endpoint(serverName string, scheme string, eptF DoEptFunc) (endpoint.Endpoint, error) {
+func (e *etcdClient) Endpoint(serverName string, scheme string, eptF DoEptFunc) (endpoint.Endpoint, error) {
 	var (
-		ept          endpoint.Endpoint
-		err          error
+		ept endpoint.Endpoint
+		err error
 	)
 	// 获取服务列表
-	prefix  := fmt.Sprintf("/%s/%s/", serverName, scheme)
+	prefix := fmt.Sprintf("/%s/%s/", serverName, scheme)
 	srvList, err := e.GetEntries(prefix)
 	if err != nil {
 		return ept, err
@@ -250,7 +247,6 @@ func (e *etcdClient)Endpoint(serverName string, scheme string, eptF DoEptFunc) (
 	if len(srvList) == 0 {
 		return ept, ecode.EtcdEmptySrv.Error(prefix)
 	}
-	
+
 	return e.Retry.Endpoint(eptF, e.Balancer, srvList, scheme), nil
 }
-

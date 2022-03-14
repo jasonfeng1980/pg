@@ -3,7 +3,6 @@ package util
 import (
 	"context"
 	"database/sql"
-	"github.com/jasonfeng1980/pg/ecode"
 	"time"
 )
 
@@ -33,7 +32,8 @@ func SessionSet(ctx context.Context, k string, v interface{}) {
 func SessionHandle(ctx context.Context) *session{
 	m := ctx.Value(SessionKey)
 	if m == nil {
-		Panic(ecode.UtilSessionNotNew.Error())
+		//Panic(ecode.UtilSessionNotNew.Error())
+		return &session{&Param{}}
 	}
 	return m.(*session)
 }

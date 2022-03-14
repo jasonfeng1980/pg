@@ -164,11 +164,12 @@ func main(){
         Server("example/conf/demo/pg_11_dev.yaml").
         Set()
     svc := pg.Server()
-    svc.Script()、
-    test()
+    defer svc.Close()
+    ctx := svc.Script()
+    test(ctx)
 }
 
-func test()  {
+func test(ctx context.Context)  {
     // ...
 }
 ```
@@ -387,7 +388,7 @@ CustomAct(operatorId int64, workflowId int64, docketCode string, act *ConfAct, p
 // 8. 观察者行为
 ObAct(operatorId int64, workflowId int64, nodeStatus *ConfNodeStatus, obAct *ConfOB, params map[string]interface{}) (rollbackAct []RollbackParams, err error)
 ```
-配置工作流json:
+配置工作流json: (具体含义可以看 https://github.com/jasonfeng1980/pg/blob/master/util/workflow/conf.go )
 ```json
 {
 // 工作流的基本信息,

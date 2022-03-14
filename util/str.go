@@ -81,6 +81,11 @@ func StrSecFirstForSplit(str string, spe string) string{
     return strings.ToLower(str[0:1]) + str[1:]
 }
 
+func StrSubStr(s string,begin int , len int) string{
+    r := []rune(s)
+    return string(r[begin:begin+len])
+}
+
 // 获取字符串格式，中文算一个
 // "中国2" => 3
 func StrLen(str string) int{
